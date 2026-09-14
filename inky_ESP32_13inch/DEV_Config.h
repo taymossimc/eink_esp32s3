@@ -46,15 +46,17 @@
 /**
  * GPIO config
 **/
-#define EPD_SCK_PIN     18 // Updated
-#define EPD_MOSI_PIN    23 // Updated
-#define EPD_MISO_PIN    19 // MISO for hardware SPI (ESP32 default)
-#define EPD_CS_M_PIN    2 // Updated first
-#define EPD_CS_S_PIN    13 // Updated second
-#define EPD_DC_PIN      14
-#define EPD_RST_PIN     0
-#define EPD_BUSY_PIN    26
-#define EPD_PWR_PIN     25
+// SCK/MOSI and CS_M/CS_S are runtime variables so diagnostic builds can try
+// swapped combinations without reflashing. Defaults: SCK=7 MOSI=6 CS_M=8
+// (Inky CS0) CS_S=9 (Inky CS1).
+extern int EPD_SCK_PIN;
+extern int EPD_MOSI_PIN;
+extern int EPD_CS_M_PIN;
+extern int EPD_CS_S_PIN;
+#define EPD_MISO_PIN    -1  // The e-paper interface is write-only
+#define EPD_DC_PIN      5   // moved off GPIO16 (camera connector pin)
+#define EPD_RST_PIN     17
+#define EPD_BUSY_PIN    18
 
 
 

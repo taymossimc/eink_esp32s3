@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "optic-mcp": {
+      "command": "py",
+      "args": ["-3.11", "-m", "optic_mcp.server"]
+    }
+  }
+}

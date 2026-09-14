@@ -35,7 +35,7 @@
 // 		SPI_CS0, SPI_CS1
 // };
 const UBYTE PSR_V[2] = {
-	0xDF, 0x69
+	0xDF, 0x6B
 };
 const UBYTE PLL_V[1] = {
 	0x08
@@ -50,7 +50,7 @@ const UBYTE DRF_V[1] = {
 	0x00
 };
 const UBYTE CDI_V[1] = {
-	0xF7
+	0x37
 };
 const UBYTE TCON_V[2] = {
 	0x03, 0x03
@@ -71,7 +71,7 @@ const UBYTE PWS_V[1] = {
 	0x22
 };
 const UBYTE AN_TM_V[9] = {
-	0xC0, 0x1C, 0x1C, 0xCC, 0xCC, 0xCC, 0x15, 0x15, 0x55
+	0x00, 0x0C, 0x0C, 0xD9, 0xDD, 0xDD, 0x15, 0x15, 0x55
 };
 
 
@@ -80,19 +80,31 @@ const UBYTE AGID_V[1] = {
 };
 
 const UBYTE BTST_P_V[2] = {
-	0xD8, 0x18
+	0xE0, 0x20
 };
 const UBYTE BOOST_VDDP_EN_V[1] = {
 	0x01
 };
 const UBYTE BTST_N_V[2] = {
-	0xD8, 0x18
+	0xE0, 0x20
 };
 const UBYTE BUCK_BOOST_VDDN_V[1] = {
 	0x01
 };
 const UBYTE TFT_VCOM_POWER_V[1] = {
 	0x02
+};
+const UBYTE DCDC_V[3] = {
+	0x44, 0x54, 0x00
+};
+const UBYTE POFS_M_V[4] = {
+	0x00, 0xC0, 0x03, 0xA8
+};
+const UBYTE POFS_S_V[4] = {
+	0x00, 0xC0, 0x03, 0x9A
+};
+const UBYTE CMDA4_V[9] = {
+	0x03, 0x00, 0x01, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00
 };
 
 
@@ -125,16 +137,14 @@ parameter:
 ******************************************************************************/
 static void EPD_13IN3E_Reset(void)
 {
+    // Generous timing (matches Pimoroni driver): needed to reliably wake the
+    // panel from deep sleep, not just from a cold power-on.
     DEV_Digital_Write(EPD_RST_PIN, 1);
-    DEV_Delay_ms(30);
+    DEV_Delay_ms(50);
     DEV_Digital_Write(EPD_RST_PIN, 0);
-    DEV_Delay_ms(30);
+    DEV_Delay_ms(100);
     DEV_Digital_Write(EPD_RST_PIN, 1);
-    DEV_Delay_ms(30);
-    //DEV_Digital_Write(EPD_RST_PIN, 0);
-    //DEV_Delay_ms(30);
-    //DEV_Digital_Write(EPD_RST_PIN, 1);
-    //DEV_Delay_ms(30);
+    DEV_Delay_ms(200);
 }
 
 /******************************************************************************
@@ -172,15 +182,50 @@ void EPD_13IN3E_SendData2(const UBYTE *buf, uint32_t Len)
 function :	Wait until the busy_pin goes LOW
 parameter:
 ******************************************************************************/
-static void EPD_13IN3E_ReadBusyH(void)
+static bool EPD_13IN3E_ReadBusyH(void)
 {
-    Debug("e-Paper busy\r\n");
+    const uint32_t start = millis();
+    Serial.printf("BUSY wait: initial=%s\n",
+                  DEV_Digital_Read(EPD_BUSY_PIN) ? "HIGH (idle)" : "LOW (busy)");
 	while(!DEV_Digital_Read(EPD_BUSY_PIN)) {      //LOW: busy, HIGH: idle
         DEV_Delay_ms(10);
-        // Debug("e-Paper busy release\r\n");
+        if (millis() - start > 120000) {
+            Serial.println("ERROR: BUSY remained LOW for 120 seconds");
+            return false;
+        }
     }
 	DEV_Delay_ms(20);
-    Debug("e-Paper busy release\r\n");
+    Serial.printf("BUSY idle after %lu ms\n",
+                  static_cast<unsigned long>(millis() - start));
+    return true;
+}
+
+static bool EPD_13IN3E_RefreshStarted(uint32_t window_ms)
+{
+    const uint32_t start = millis();
+    while (millis() - start < window_ms) {
+        if (!DEV_Digital_Read(EPD_BUSY_PIN)) {
+            Serial.println("BUSY asserted LOW; panel is refreshing");
+            return true;
+        }
+        DEV_Delay_ms(10);
+    }
+    return false;
+}
+
+static bool EPD_13IN3E_WaitRefreshComplete(void)
+{
+    const uint32_t start = millis();
+    while (!DEV_Digital_Read(EPD_BUSY_PIN)) {
+        if (millis() - start > 65000) {
+            Serial.println("ERROR: display refresh timed out after 65 seconds");
+            return false;
+        }
+        DEV_Delay_ms(100);
+    }
+    Serial.printf("Refresh completed in %lu ms\n",
+                  static_cast<unsigned long>(millis() - start));
+    return true;
 }
 
 
@@ -188,20 +233,35 @@ static void EPD_13IN3E_ReadBusyH(void)
 function :  Turn On Display
 parameter:
 ******************************************************************************/
-void EPD_13IN3E_TurnOnDisplay(void)
+bool EPD_13IN3E_TurnOnDisplay(void)
 {
     printf("Write PON \r\n");
     EPD_13IN3E_CS_ALL(0);
     EPD_13IN3E_SPI_Sand(PON, NULL, 0); // POWER_ON with 300ms DC setup delay
     EPD_13IN3E_CS_ALL(1);
-    EPD_13IN3E_ReadBusyH();
+    if (!EPD_13IN3E_ReadBusyH()) {
+        return false;
+    }
 
     DEV_Delay_ms(200);
     printf("Write DRF \r\n");
     EPD_13IN3E_CS_ALL(0);
     EPD_13IN3E_SPI_Sand(DRF, DRF_V, sizeof(DRF_V));
     EPD_13IN3E_CS_ALL(1);
-    EPD_13IN3E_ReadBusyH();
+
+    // Single DRF, generous window (Pimoroni style): the panel can take a
+    // while to assert BUSY, and re-sending DRF mid-preparation can disturb it.
+    const bool started = EPD_13IN3E_RefreshStarted(65000);
+    if (started) {
+        if (!EPD_13IN3E_WaitRefreshComplete()) {
+            return false;
+        }
+    } else {
+        Serial.println("ERROR: panel did not assert BUSY after refresh command");
+        // Do NOT send POF here: powering off mid-refresh can latch the panel
+        // into a fault state that only full power removal recovers.
+        return false;
+    }
 
     DEV_Delay_ms(200);
     printf("Write POF \r\n");
@@ -209,9 +269,12 @@ void EPD_13IN3E_TurnOnDisplay(void)
     EPD_13IN3E_SPI_Sand(POF, POF_V, sizeof(POF_V));
     EPD_13IN3E_CS_ALL(1);
 
-    EPD_13IN3E_ReadBusyH();
+    if (!EPD_13IN3E_ReadBusyH()) {
+        return false;
+    }
     DEV_Delay_ms(200);
     printf("Display Done!! \r\n");
+    return true;
 }
 
 /******************************************************************************
@@ -235,6 +298,10 @@ void EPD_13IN3E_Init(void)
 	EPD_13IN3E_SPI_Sand(PSR, PSR_V, sizeof(PSR_V));
     EPD_13IN3E_CS_ALL(1);
 
+    DEV_Digital_Write(EPD_CS_M_PIN, 0);
+	EPD_13IN3E_SPI_Sand(0xA5, DCDC_V, sizeof(DCDC_V));
+    EPD_13IN3E_CS_ALL(1);
+
     EPD_13IN3E_CS_ALL(0);
 	EPD_13IN3E_SPI_Sand(PLL, PLL_V, sizeof(PLL_V));
     EPD_13IN3E_CS_ALL(1);
@@ -245,6 +312,14 @@ void EPD_13IN3E_Init(void)
 
     EPD_13IN3E_CS_ALL(0);
 	EPD_13IN3E_SPI_Sand(TCON, TCON_V, sizeof(TCON_V));
+    EPD_13IN3E_CS_ALL(1);
+
+    DEV_Digital_Write(EPD_CS_M_PIN, 0);
+	EPD_13IN3E_SPI_Sand(0x03, POFS_M_V, sizeof(POFS_M_V));
+    EPD_13IN3E_CS_ALL(1);
+
+    DEV_Digital_Write(EPD_CS_S_PIN, 0);
+	EPD_13IN3E_SPI_Sand(0x03, POFS_S_V, sizeof(POFS_S_V));
     EPD_13IN3E_CS_ALL(1);
 
     EPD_13IN3E_CS_ALL(0);
@@ -261,6 +336,10 @@ void EPD_13IN3E_Init(void)
 
     EPD_13IN3E_CS_ALL(0);
 	EPD_13IN3E_SPI_Sand(TRES, TRES_V, sizeof(TRES_V));
+    EPD_13IN3E_CS_ALL(1);
+
+    DEV_Digital_Write(EPD_CS_M_PIN, 0);
+	EPD_13IN3E_SPI_Sand(0xA4, CMDA4_V, sizeof(CMDA4_V));
     EPD_13IN3E_CS_ALL(1);
 
     DEV_Digital_Write(EPD_CS_M_PIN, 0);
@@ -356,10 +435,10 @@ parameter:
 ******************************************************************************/
 void EPD_13IN3E_Sleep(void)
 {
+    static const UBYTE DSLP_V[1] = {0xA5};
     EPD_13IN3E_CS_ALL(0);
-    EPD_13IN3E_SendCommand(0x07); // DEEP_SLEEP
-    EPD_13IN3E_SendData(0XA5);
-    EPD_13IN3E_CS_ALL(0);
+    EPD_13IN3E_SPI_Sand(0x07, DSLP_V, sizeof(DSLP_V)); // DEEP_SLEEP
+    EPD_13IN3E_CS_ALL(1);
 }
 
 

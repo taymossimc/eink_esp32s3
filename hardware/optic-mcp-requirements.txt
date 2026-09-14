@@ -1,0 +1,6 @@
+# OpticMCP deps for Cursor MCP (Windows)
+# Install: uv pip install -r hardware/optic-mcp-requirements.txt --system
+optic-mcp==0.6.0
+mcp>=1.0,<2
+# Do NOT install pyzbar on Windows unless libzbar DLLs are present;
+# a broken pyzbar install crashes optic-mcp at startup.

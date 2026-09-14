@@ -1,0 +1,109 @@
+﻿{
+    "events":  [
+                   {
+                       "id":  "C1C0DC9C-F65F860E-0000000000000008",
+                       "timestamp":  "2026-09-11T06:13:30Z",
+                       "trigger":  "carousel",
+                       "endpoint":  "https://digitalengine.leporia.net/ad_carousel/Codex%20Image%207%20Sept%202026%2C%2001_40_58.png",
+                       "transport":  "cellular",
+                       "fallback":  "wifi-\u003ecellular",
+                       "result":  "request failed",
+                       "status":  0,
+                       "bytes":  0,
+                       "durationMs":  686232,
+                       "success":  false
+                   },
+                   {
+                       "id":  "7AF32850-89459C37-0000000000000007",
+                       "timestamp":  "2026-09-11T06:02:00Z",
+                       "trigger":  "carousel",
+                       "endpoint":  "https://digitalengine.leporia.net/ad_carousel",
+                       "transport":  "cellular",
+                       "fallback":  "wifi-\u003ecellular",
+                       "result":  "ok",
+                       "status":  200,
+                       "bytes":  644,
+                       "durationMs":  5510,
+                       "success":  true
+                   },
+                   {
+                       "id":  "6FBBDC20-DE37549E-0000000000000006",
+                       "timestamp":  "2026-09-11T06:01:50Z",
+                       "trigger":  "carousel",
+                       "endpoint":  "https://digitalengine.leporia.net/ad_carousel/Codex%20Image%207%20Sept%202026%2C%2001_40_58.png",
+                       "transport":  "cellular",
+                       "fallback":  "wifi-\u003ecellular",
+                       "result":  "request failed",
+                       "status":  0,
+                       "bytes":  0,
+                       "durationMs":  677368,
+                       "success":  false
+                   },
+                   {
+                       "id":  "B29E4C2C-A35A4FB7-0000000000000005",
+                       "timestamp":  "2026-09-11T05:50:29Z",
+                       "trigger":  "carousel",
+                       "endpoint":  "https://digitalengine.leporia.net/ad_carousel",
+                       "transport":  "cellular",
+                       "fallback":  "wifi-\u003ecellular",
+                       "result":  "ok",
+                       "status":  200,
+                       "bytes":  644,
+                       "durationMs":  5483,
+                       "success":  true
+                   },
+                   {
+                       "id":  "C4CE3D42-2A00391F-0000000000000004",
+                       "timestamp":  "2026-09-11T05:38:40Z",
+                       "trigger":  "carousel",
+                       "endpoint":  "https://digitalengine.leporia.net/ad_carousel",
+                       "transport":  "cellular",
+                       "fallback":  "wifi-\u003ecellular",
+                       "result":  "ok",
+                       "status":  200,
+                       "bytes":  644,
+                       "durationMs":  5175,
+                       "success":  true
+                   },
+                   {
+                       "id":  "591EA13C-79AD5291-0000000000000003",
+                       "timestamp":  "2026-09-11T05:32:13Z",
+                       "trigger":  "carousel",
+                       "endpoint":  "https://digitalengine.leporia.net/ad_carousel",
+                       "transport":  "cellular",
+                       "fallback":  "wifi-\u003ecellular",
+                       "result":  "ok",
+                       "status":  200,
+                       "bytes":  644,
+                       "durationMs":  5440,
+                       "success":  true
+                   },
+                   {
+                       "id":  "E953309C-916F7CBE-0000000000000002",
+                       "timestamp":  "2026-09-11T05:32:03Z",
+                       "trigger":  "carousel",
+                       "endpoint":  "https://digitalengine.leporia.net/ad_carousel/Codex%20Image%207%20Sept%202026%2C%2001_40_58.png",
+                       "transport":  "cellular",
+                       "fallback":  "wifi-\u003ecellular",
+                       "result":  "request failed",
+                       "status":  0,
+                       "bytes":  0,
+                       "durationMs":  71339,
+                       "success":  false
+                   },
+                   {
+                       "id":  "0400E8BC-4C294E9A-0000000000000001",
+                       "timestamp":  "2026-09-11T05:30:49Z",
+                       "trigger":  "carousel",
+                       "endpoint":  "https://digitalengine.leporia.net/ad_carousel",
+                       "transport":  "cellular",
+                       "fallback":  "wifi-\u003ecellular",
+                       "result":  "ok",
+                       "status":  200,
+                       "bytes":  644,
+                       "durationMs":  5354,
+                       "success":  true
+                   }
+               ],
+    "total":  8
+}

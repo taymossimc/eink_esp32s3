@@ -30,6 +30,13 @@
 #include "DEV_Config.h"
 #include <SPI.h>
 
+// Moved off GPIO12-16 (shared with the Freenove camera connector) onto
+// unused GPIOs on the same side of the board.
+int EPD_SCK_PIN  = 7;
+int EPD_MOSI_PIN = 6;
+int EPD_CS_M_PIN = 8;  // Inky CS0 / primary controller
+int EPD_CS_S_PIN = 9;  // Inky CS1 / secondary controller
+
 void GPIO_Config(void)
 {
     // Configure pins. Busy line needs a pull-up so it doesn't float
@@ -37,11 +44,9 @@ void GPIO_Config(void)
 
     pinMode(EPD_RST_PIN , OUTPUT);
     pinMode(EPD_DC_PIN  , OUTPUT);
-    pinMode(EPD_PWR_PIN,  OUTPUT);
 
     pinMode(EPD_SCK_PIN, OUTPUT);
     pinMode(EPD_MOSI_PIN, OUTPUT);
-    pinMode(EPD_MISO_PIN, INPUT);
     pinMode(EPD_CS_M_PIN , OUTPUT);
     pinMode(EPD_CS_S_PIN , OUTPUT);
 
@@ -49,7 +54,6 @@ void GPIO_Config(void)
     digitalWrite(EPD_CS_M_PIN , HIGH);
     digitalWrite(EPD_CS_S_PIN , HIGH);
     digitalWrite(EPD_SCK_PIN, HIGH);
-    digitalWrite(EPD_PWR_PIN , HIGH);
     // Ensure DC and RST are in known states
     digitalWrite(EPD_DC_PIN, LOW);
     //digitalWrite(EPD_RST_PIN, HIGH);
@@ -91,7 +95,7 @@ function:
 
 void DEV_SPI_WriteByte(UBYTE data)
 {
-    SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+    SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
     SPI.transfer(data);
     SPI.endTransaction();
 
@@ -99,7 +103,7 @@ void DEV_SPI_WriteByte(UBYTE data)
 
 UBYTE DEV_SPI_ReadByte()
 {
-    SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+    SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
     uint8_t val = SPI.transfer(0x00);
     SPI.endTransaction();
     return val;
@@ -107,7 +111,7 @@ UBYTE DEV_SPI_ReadByte()
 
 void DEV_SPI_Write_nByte(UBYTE *pData, UDOUBLE len)
 {
-    SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+    SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
     for (UDOUBLE i = 0; i < len; i++) {
         SPI.transfer(pData[i]);
     }
@@ -117,6 +121,5 @@ void DEV_SPI_Write_nByte(UBYTE *pData, UDOUBLE len)
 
 void DEV_Module_Exit(void)
 {
-    digitalWrite(EPD_PWR_PIN , LOW);
     digitalWrite(EPD_RST_PIN , LOW);
 }

@@ -1,0 +1,51 @@
+﻿
+<!doctype html><html><head><meta name=viewport content="width=device-width,initial-scale=1">
+<title>E-Ink Device Setup</title><style>
+:root{color-scheme:light dark;font-family:system-ui,sans-serif}body{max-width:980px;margin:auto;padding:16px}
+nav{display:flex;gap:6px;flex-wrap:wrap;position:sticky;top:0;background:Canvas;padding:8px 0}
+button,.btn,input,select{font:inherit;padding:9px;border:1px solid #888;border-radius:6px}input[type=checkbox]{width:auto}
+button,.btn{cursor:pointer;background:#2463eb;color:white;text-decoration:none}section{display:none}section.on{display:block}
+.card{border:1px solid #8888;border-radius:9px;padding:14px;margin:12px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+label{display:grid;gap:4px}input{width:100%;box-sizing:border-box}.muted{opacity:.7}.msg{white-space:pre-wrap;border-bottom:1px solid #8884;padding:8px 0}
+img{max-width:100%;max-height:360px;border:1px solid #888}.ok{color:#198754}.bad{color:#dc3545}
+</style></head><body><h1>E-Ink Device Setup</h1><div id=summary class=card>Loadingâ¦</div>
+<nav><button onclick=tab('cell')>Cellular</button><button onclick=tab('wifi')>Wi-Fi</button><button onclick=tab('sms')>SMS</button><button onclick=tab('home')>Phone Home</button><button onclick=tab('media')>Media</button><button onclick=tab('speed')>Bandwidth</button><button onclick=tab('diag')>Diagnostics</button></nav>
+<section id=cell><h2>Cellular / SIM</h2><form id=cellForm class=card><div class=grid>
+<label><span>Automatic carrier APN</span><select name=autoApn><option value=1>Enabled</option><option value=0>Manual</option></select></label>
+<label><span>APN</span><input name=apn placeholder="sp.koodo.com"></label>
+<label><span>Username</span><input name=user autocomplete=off></label><label><span>New password</span><input name=pass type=password autocomplete=new-password></label>
+<label><span>PDP type</span><select name=pdp><option>IPv4v6</option><option>IPv4</option></select></label>
+<label><span>Authentication</span><select name=auth><option>Auto</option><option>None</option><option>PAP</option><option>CHAP</option></select></label>
+<label><span>SIM PIN</span><input name=pin type=password maxlength=8 placeholder="unchanged"></label><label><span>Clear secrets</span><span><input name=clearPass type=checkbox value=1> APN password <input name=clearPin type=checkbox value=1> SIM PIN</span></label>
+<label><span>Allow roaming</span><select name=roaming><option value=1>Yes</option><option value=0>No</option></select></label>
+</div><p class=muted>Common suggestions: Koodo sp.koodo.com, AT&amp;T broadband, T-Mobile fast.t-mobile.com, Verizon vzwinternet. MVNOs may require their own APN.</p><button>Save cellular settings</button></form></section>
+<section id=wifi><h2>Wi-Fi</h2><div class=card><label><span>Global Wi-Fi</span><select id=wifiEnabled><option value=1>Enabled</option><option value=0>Disabled</option></select></label><p><button onclick="saveWifiToggle()">Save toggle</button> <button onclick="scanWifi()">Scan networks</button></p><div id=scan></div></div>
+<form id=wifiForm class=card><div class=grid><label>Profile slot<select name=slot><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label><label>SSID<input name=ssid required maxlength=32></label><label>Password<input name=password type=password maxlength=64 placeholder="unchanged"></label><label>Enabled<select name=enabled><option value=1>Yes</option><option value=0>No</option></select></label><label><span><input name=clearPassword type=checkbox value=1> Clear saved password</span></label></div><button>Save network</button></form><div id=profiles></div></section>
+<section id=sms><h2>SMS Inbox</h2><p><button onclick=loadSms()>Refresh</button> <button onclick=clearSms()>Clear archive</button></p><div id=smsList></div></section>
+<section id=home><h2>Phone Home Events</h2><p><button onclick=loadLogs()>Refresh</button> <button onclick=clearLogs()>Clear log</button></p><div id=logs></div></section>
+<section id=media><h2>Media</h2><div class=grid><div class=card><h3>Current</h3><div id=currentMeta></div><img src="/media/current.bmp" onerror="this.style.display='none'"><p><a class=btn href="/media/current.bmp?download=1">Download</a></p></div><div class=card><h3>Next</h3><div id=nextMeta></div><img src="/media/next.bmp" onerror="this.style.display='none'"><p><a class=btn href="/media/next.bmp?download=1">Download</a></p></div></div>
+<form id=orientationForm class=card><label>Display orientation<select name=orientation><option value=0>Portrait</option><option value=90>Landscape clockwise</option><option value=180>Portrait inverted</option><option value=270>Landscape counterclockwise</option></select></label><button>Save orientation</button></form>
+<form id=uploadForm class=card enctype=multipart/form-data><label>Upload JPEG or PNG as next<input name=media type=file accept=".jpg,.jpeg,.png,image/jpeg,image/png" required></label><button>Upload as Next</button></form>
+<p><button onclick=refreshDisplay()>Refresh now and queue old current</button></p></section>
+<section id=speed><h2>Bandwidth Test</h2><div class=card><label>Download size<select id=speedBytes><option value=262144>256 KB</option><option value=1048576 selected>1 MB</option><option value=5242880>5 MB</option></select></label><p><button onclick="speed('wifi')">Test Wi-Fi</button> <button onclick="speed('cellular')">Test cellular</button></p><div id=speedResult></div></div></section>
+<section id=diag><h2>Diagnostics</h2><button onclick=loadStatus()>Refresh</button><pre id=diagnostics class=card></pre></section>
+<script>
+const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function tab(id){document.querySelectorAll('section').forEach(x=>x.classList.toggle('on',x.id==id));if(id=='sms')loadSms();if(id=='home')loadLogs();if(id=='media')loadMedia()}tab('cell');
+async function api(url,opt){let r=await fetch(url,opt);let t=await r.text();if(!r.ok)throw Error(t);try{return JSON.parse(t)}catch{return t}}
+function formPost(form,url){form.addEventListener('submit',async e=>{e.preventDefault();try{await api(url,{method:'POST',body:new URLSearchParams(new FormData(form))});await loadStatus();alert('Saved')}catch(x){alert(x)}})}
+formPost($('#cellForm'),'/api/config/cellular');formPost($('#wifiForm'),'/api/config/wifi');formPost($('#orientationForm'),'/api/config/orientation');
+$('#uploadForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/media/upload',{method:'POST',body:new FormData(e.target)});alert('Upload queued for processing');setTimeout(loadMedia,2500)}catch(x){alert(x)}};
+async function loadStatus(){let d=await api('/api/status');$('#summary').innerHTML=`AP <b>${esc(d.ap.ssid)}</b> Â· ${esc(d.ap.ip)} Â· 5V ${d.rail?'ON':'OFF'} Â· ${esc(d.action)}`;$('#diagnostics').textContent=JSON.stringify(d,null,2);$('#wifiEnabled').value=d.config.wifiEnabled?1:0;Object.assign($('#cellForm').elements,{ });let f=$('#cellForm').elements;f.autoApn.value=d.config.autoApn?1:0;f.apn.value=d.config.apn;f.user.value=d.config.user;f.pdp.value=d.config.pdp;f.auth.value=d.config.auth;f.roaming.value=d.config.roaming?1:0;$('#orientationForm').elements.orientation.value=d.config.orientation;$('#profiles').innerHTML=d.config.profiles.map((p,i)=>`<div class=card>Slot ${i}: <b>${esc(p.ssid||'(empty)')}</b> ${p.enabled?'enabled':'disabled'} ${p.hasPassword?'(password saved)':''}</div>`).join('');$('#speedResult').textContent=d.bandwidth}
+async function scanWifi(){let d=await api('/api/wifi/scan');$('#scan').innerHTML=d.networks.map(n=>`<button type=button onclick="document.querySelector('#wifiForm [name=ssid]').value=${JSON.stringify(n.ssid)}">${esc(n.ssid)} (${n.rssi} dBm${n.secured?', secured':''})</button> `).join('')}
+async function saveWifiToggle(){await api('/api/config/wifi-toggle',{method:'POST',body:new URLSearchParams({enabled:$('#wifiEnabled').value})});loadStatus()}
+async function loadSms(){let d=await api('/api/sms');$('#smsList').innerHTML=d.messages.map(m=>`<div class=msg><b>${esc(m.sender)}</b> Â· ${esc(m.timestamp)}<br>${esc(m.body)}</div>`).join('')||'<p>No archived messages.</p>'}
+async function clearSms(){if(confirm('Delete archived SMS history?')){await api('/api/sms/clear',{method:'POST'});loadSms()}}
+async function loadLogs(){let d=await api('/api/logs');$('#logs').innerHTML=d.events.map(e=>`<div class=msg><b class=${e.success?'ok':'bad'}>${esc(e.result)}</b> Â· ${esc(e.transport)} Â· ${e.durationMs} ms Â· ${e.bytes} bytes<br>${esc(e.endpoint)}<br><span class=muted>${esc(e.trigger)} ${esc(e.fallback)}</span></div>`).join('')||'<p>No events.</p>'}
+async function clearLogs(){if(confirm('Clear phone-home history?')){await api('/api/logs/clear',{method:'POST'});loadLogs()}}
+async function loadMedia(){let d=await api('/api/media');$('#currentMeta').textContent=d.current.available?`${d.current.name} Â· ${d.current.orientation}Â° Â· ${d.current.origin}`:'Not captured yet';$('#nextMeta').textContent=d.next.available?`${d.next.name} Â· ${d.next.orientation}Â° Â· ${d.next.origin}`:'No media queued'}
+async function refreshDisplay(){if(confirm('Display Next now and queue Current for the next tap?')){await api('/api/media/refresh',{method:'POST'});alert('Refresh queued')}}
+async function speed(t){await api('/api/bandwidth',{method:'POST',body:new URLSearchParams({transport:t,bytes:$('#speedBytes').value})});$('#speedResult').textContent='Test queuedâ¦';setTimeout(loadStatus,3000)}
+loadStatus();setInterval(loadStatus,10000);
+</script></body></html>
+

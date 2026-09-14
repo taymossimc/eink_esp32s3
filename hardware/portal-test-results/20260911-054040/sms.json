@@ -1,0 +1,47 @@
+﻿{
+    "messages":  [
+                     {
+                         "id":  3975064733,
+                         "sender":  "6400",
+                         "timestamp":  "26/09/11,00:36:06-16",
+                         "body":  "Kpre: Your Koodo Prepaid authorization code is 071230. You may be asked for this code ONLY by a customer agent and an in store representative, but you will never receive a call/email/SMS from us asesentative, but you will never receive a call/email/SMS from us asking for this code unless you scheduled a callback with Koodo Assiking for this code unless you scheduled a callback with Koodo Assist.",
+                         "incomplete":  false
+                     },
+                     {
+                         "id":  1243133497,
+                         "sender":  "6400",
+                         "timestamp":  "26/09/11,00:28:30-16",
+                         "body":  "Kpre: Your Koodo Prepaid authorization code is 508582. You may be asked for this code ONLY by a customer agent and an in store representative, but you will never receive a call/email/SMS from us asking for this code unless you scheduled a callback with Koodo Assist.",
+                         "incomplete":  false
+                     },
+                     {
+                         "id":  281217852,
+                         "sender":  "6400",
+                         "timestamp":  "26/09/11,00:04:59-16",
+                         "body":  "Kpre: Your Koodo Prepaid authorization code is 998061. You may be asked for this code ONLY by a customer agent and an in store representative, but you will never receive a call/email/SMS from us asking for this code unless you scheduled a callback with Koodo Assist.",
+                         "incomplete":  false
+                     },
+                     {
+                         "id":  4294272377,
+                         "sender":  "6400",
+                         "timestamp":  "26/09/11,00:01:54-16",
+                         "body":  "Kpre: Your Koodo Prepaid authorization code is 284293. You may be asked for this code ONLY by a customer agent and an in store representative, but you will never receive a call/email/SMS from us asking for this code unless you scheduled a callback with Koodo Assist.",
+                         "incomplete":  false
+                     },
+                     {
+                         "id":  973116876,
+                         "sender":  "55545054",
+                         "timestamp":  "26/08/25,09:44:33-16",
+                         "body":  "ustomers using Roaming Booster add-ons may experience differences in coverage and service quality (including 9-1-1 calls) due to certain U.S. carrier 3G network shutdowns. To purchase a U.S. Roaming Booster add-on starting at just $5, dial *611 or log into prepaidselfserve.koodomobile.com You are included on the list for Koodo offers and deals. Reply unsubscribe to opt out or visit  https://bit.ly/3uMDPm8",
+                         "incomplete":  false
+                     },
+                     {
+                         "id":  4123493801,
+                         "sender":  "55545054",
+                         "timestamp":  "26/08/25,09:44:32-16",
+                         "body":  "Welcome to USA! If you don\u0027t have a U.S. Roaming Booster add-on, you will not be able to make/receive calls, send texts or use data. C",
+                         "incomplete":  false
+                     }
+                 ],
+    "total":  6
+}

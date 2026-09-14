@@ -74,7 +74,7 @@ void EPD_13IN3E_Clear(UBYTE color);
 void EPD_13IN3E_Display(const UBYTE *Image);
 void EPD_13IN3E_SendData2(const UBYTE *buf, uint32_t Len);
 void EPD_13IN3E_SendData(UBYTE Reg);
-void EPD_13IN3E_TurnOnDisplay(void);
+bool EPD_13IN3E_TurnOnDisplay(void);
 void EPD_13IN3E_CS_ALL(UBYTE Value);
 void EPD_13IN3E_DisplayPart(const UBYTE *Image, UWORD xstart, UWORD ystart, UWORD image_width, UWORD image_heigh);
 void EPD_13IN3E_Show6Block(void);

@@ -1,0 +1,106 @@
+﻿{
+    "ap":  {
+               "ssid":  "EInk-Setup-8FCBA4",
+               "ip":  "192.168.4.1"
+           },
+    "rail":  true,
+    "uptimeMs":  8666,
+    "heapFree":  188088,
+    "psramFree":  8256100,
+    "flashSize":  16777216,
+    "littlefsUsed":  49152,
+    "littlefsTotal":  6160384,
+    "wifi":  {
+                 "connected":  false,
+                 "ssid":  "",
+                 "ip":  "",
+                 "rssi":  0
+             },
+    "config":  {
+                   "wifiEnabled":  true,
+                   "autoApn":  true,
+                   "apn":  "sp.koodo.com",
+                   "user":  "",
+                   "hasCellPassword":  false,
+                   "hasSimPin":  false,
+                   "auth":  "Auto",
+                   "pdp":  "IPv4",
+                   "roaming":  false,
+                   "orientation":  0,
+                   "profiles":  [
+                                    {
+                                        "enabled":  false,
+                                        "ssid":  "",
+                                        "hasPassword":  false
+                                    },
+                                    {
+                                        "enabled":  false,
+                                        "ssid":  "",
+                                        "hasPassword":  false
+                                    },
+                                    {
+                                        "enabled":  false,
+                                        "ssid":  "",
+                                        "hasPassword":  false
+                                    },
+                                    {
+                                        "enabled":  false,
+                                        "ssid":  "",
+                                        "hasPassword":  false
+                                    },
+                                    {
+                                        "enabled":  false,
+                                        "ssid":  "",
+                                        "hasPassword":  false
+                                    },
+                                    {
+                                        "enabled":  false,
+                                        "ssid":  "",
+                                        "hasPassword":  false
+                                    },
+                                    {
+                                        "enabled":  false,
+                                        "ssid":  "",
+                                        "hasPassword":  false
+                                    },
+                                    {
+                                        "enabled":  false,
+                                        "ssid":  "",
+                                        "hasPassword":  false
+                                    }
+                                ]
+               },
+    "smsCount":  6,
+    "phoneHomeCount":  8,
+    "media":  {
+                  "currentName":  "",
+                  "current":  {
+                                  "available":  false
+                              },
+                  "next":  {
+                               "available":  false
+                           }
+              },
+    "modem":  {
+                  "ready":  false,
+                  "registered":  false,
+                  "dataConnected":  false,
+                  "model":  "",
+                  "imei":  "",
+                  "number":  "",
+                  "iccid":  "",
+                  "imsi":  "",
+                  "operator":  "",
+                  "signalQuality":  0,
+                  "ip":  ""
+              },
+    "gps":  {
+                "fixed":  false,
+                "latitude":  0,
+                "longitude":  0,
+                "altitude":  0,
+                "satellites":  0
+            },
+    "action":  "idle",
+    "bandwidth":  "not run"
+}

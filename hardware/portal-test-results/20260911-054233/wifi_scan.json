@@ -1,0 +1,94 @@
+﻿{
+    "networks":  [
+                     {
+                         "ssid":  "Moss",
+                         "rssi":  -41,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "Moss3",
+                         "rssi":  -42,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "greenlantern",
+                         "rssi":  -60,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "",
+                         "rssi":  -60,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "Strathmore Castle",
+                         "rssi":  -78,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "EYPT",
+                         "rssi":  -80,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "BELL892",
+                         "rssi":  -83,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "SmartHome8661",
+                         "rssi":  -83,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "Setonetwork",
+                         "rssi":  -84,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "Jiang",
+                         "rssi":  -84,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "Rogers440",
+                         "rssi":  -85,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "BELL233",
+                         "rssi":  -87,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "BELL110",
+                         "rssi":  -88,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "Moss4",
+                         "rssi":  -88,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "VIRGIN014_2GEXT",
+                         "rssi":  -88,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "Lavinia",
+                         "rssi":  -91,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "VIRGIN281",
+                         "rssi":  -93,
+                         "secured":  true
+                     },
+                     {
+                         "ssid":  "Shelly1PMMiniG3-D0CF13CC8DE0",
+                         "rssi":  -95,
+                         "secured":  false
+                     }
+                 ]
+}
