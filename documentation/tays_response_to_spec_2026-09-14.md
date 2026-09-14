@@ -108,23 +108,38 @@ information](https://www.simcom.com/product/SIM7600G-H_R2.html).
 
 ### Battery and battery management
 
-**Reported, not yet fully documented**
+**Confirmed**
 
-- Three-cell battery pack.
-- Reported stored energy: 32.4 Wh.
-- Integrated battery management/protection.
+- Power module: Waveshare UPS Module 3S, SKU 23884.
+- Battery configuration: three 18650 lithium-ion cells in series (3S).
+- Battery-stack output range: approximately 9 V to 12.6 V.
+- Reported installed-cell energy: 32.4 Wh.
+- Charging input: 12.6 V at 2 A.
+- The module supports charging and supplying the load at the same time.
+- Regulated outputs: 5 V at up to 5 A and 3.3 V at up to 300 mA, plus the
+  series battery voltage.
+- Onboard INA219 monitoring provides battery voltage, current, and power over
+  I2C. This capability has not yet been integrated into the ESP32 firmware.
+- Onboard power/protection components include an S-8254AA battery-protection
+  controller, HY2213 balancing, SY8286 5 V regulator, RT9193 3.3 V regulator,
+  and overcharge, over-discharge, overcurrent, short-circuit, reverse-polarity,
+  and cell-balancing protection.
+
+Reference: [Waveshare UPS Module 3S product
+information](https://www.waveshare.com/ups-module-3s.htm).
 
 **Open — required before PCB/enclosure freeze**
 
-- Cell chemistry and exact pack/BMS part numbers.
-- Series/parallel topology, nominal voltage, full-charge voltage, and cutoff
-  thresholds.
-- Charger/input specification and whether charging and operation may occur
-  simultaneously.
-- Available voltage, current, temperature, charge-state, and state-of-charge
-  telemetry.
-- Regulator part numbers, continuous/peak ratings, and brownout margin during
-  modem transmission plus panel refresh.
+- Exact installed 18650 cell manufacturer, model, rated capacity, age, and
+  individual-cell protection status.
+- Actual S-8254AA protection thresholds as configured on this module revision.
+- How the INA219 and module I2C bus will be connected to the ESP32.
+- State-of-charge estimation policy; the module measures voltage/current/power
+  but does not by itself provide an accurate fuel-gauge percentage.
+- Battery or board temperature sensing, which is not listed as a feature of
+  this module.
+- Measured brownout margin during modem transmission plus panel refresh,
+  notwithstanding the module's published 5 V/5 A rating.
 
 ## P0 — Current bench wake and phone-home sequence
 
@@ -329,7 +344,9 @@ credential or grant unauthenticated content reassignment.
 
 ### Not available yet
 
-- Battery voltage, current, power, temperature, charge state, or estimated SoC.
+- Battery voltage, current, and power are supported by the Waveshare 23884's
+  INA219 but are not yet read by firmware. Temperature, charge state, and
+  estimated SoC are also not currently available.
 - A stable DE-assigned device ID and hardware revision.
 - Semantic firmware version/build identifier in the sync payload.
 - Complete ESP reset taxonomy such as watchdog versus brownout.
@@ -432,7 +449,8 @@ only handheld-meter spot values.
 ### Not yet locked
 
 - Production MCU module and PCB revision.
-- Battery/BMS/charger/regulator components.
+- Exact installed 18650 cell model/capacity and any additional downstream
+  charger/regulator components beyond the Waveshare 23884.
 - SIM versus eSIM.
 - Antenna parts and placement.
 - External connector and charging arrangement.
@@ -467,9 +485,10 @@ The current implementation evidence is available in:
 ## Immediate items Tay still needs to supply or measure
 
 1. Photograph/transcription of the exact ESP32 module, display label/revision,
-   battery pack, BMS, charger, regulators, modem breakout, and antenna parts.
+   installed 18650 cell models, any power components downstream of the
+   Waveshare 23884, modem breakout, and antenna parts.
 2. The exact NDEF URL currently read by a phone.
-3. Battery/BMS electrical specification and complete power-path diagram.
+3. Complete power-path diagram and INA219-to-ESP32 integration details.
 4. Deep-sleep, modem attach, weak-signal, and display-refresh energy traces.
 5. One selected U.S. carrier/MVNO SIM and its official APN/profile for assembled
    system testing.
