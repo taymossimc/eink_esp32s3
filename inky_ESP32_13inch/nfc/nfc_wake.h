@@ -4,6 +4,7 @@
 
 bool nfcBegin();
 bool nfcConfigureWake();
+bool nfcWriteUrl(const char *url);
 void nfcOnWake();
 void nfcAttachTapMonitor();
 void nfcPollTapMonitor();

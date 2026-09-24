@@ -1,0 +1,9 @@
+{
+  "name": "nanosvg",
+  "version": "1.0.0",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src",
+    "srcFilter": ["+<nanosvg_impl.cpp>"]
+  }
+}

@@ -18,6 +18,12 @@ int32_t networkWifiRssi();
 
 size_t networkScan(WifiNetworkInfo *results, size_t capacity);
 
+bool networkWifiHttpsRequest(
+    const char *host, const char *requestPath, const char *method,
+    const uint8_t *body, size_t bodyLen, const char *timestamp,
+    const char *nonce, const char *signature, uint8_t **bodyOut,
+    size_t *lenOut, size_t maxBytes, int *statusOut = nullptr);
+
 bool networkWifiHttpsGet(const char *host, const char *path,
                          uint8_t **bodyOut, size_t *lenOut,
                          size_t maxBytes);

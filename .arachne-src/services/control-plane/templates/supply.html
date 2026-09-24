@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Fleet — TMAds{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <script src="/static/vendor/leaflet/leaflet.js" defer></script>
+  <script src="/static/supply.js" defer></script>
+{% endblock %}
+{% block content %}
+<section class="page-head supply-head">
+  <div><p class="eyebrow">Supply operations</p><h1>Fleet command</h1><p>Live device health, trusted GNSS, movement warnings, sync status, and publisher revenue.</p></div>
+  <form class="period-form" method="get" data-supply-period>
+    <label>From <input type="datetime-local" name="period_start"></label>
+    <label>To <input type="datetime-local" name="period_end"></label>
+    <button type="submit">Apply period</button>
+  </form>
+</section>
+{% set online = supply.devices|selectattr("connectivity","equalto","online")|list|length %}
+{% set warnings = supply.devices|selectattr("movement_warning","equalto",true)|list|length %}
+<section class="metric-grid supply-metrics">
+  <article><span>Total devices</span><strong>{{ supply.devices|length }}</strong><small>Registered fleet</small></article>
+  <article><span>Online now</span><strong>{{ online }}</strong><small>Heartbeat within 5 minutes</small></article>
+  <article><span>Movement warnings</span><strong>{{ warnings }}</strong><small>Devices with confirmed alerts</small></article>
+</section>
+<section class="source-strip" aria-label="Upstream data status">
+{% for name, source in supply.sources.items() %}
+  <span class="source-state {{ source.state }}"><b>{{ name|replace("_"," ") }}</b> {{ source.state }}{% if source.error %}<small>{{ source.error }}</small>{% endif %}</span>
+{% endfor %}
+</section>
+<section class="panel map-panel">
+  <div class="panel-head"><h2>Fleet map</h2><small>OpenStreetMap · drag to pan, scroll or controls to zoom</small></div>
+  <div id="fleet-map" class="fleet-map" data-supply-map data-api="/api/v1/supply/devices"{% if carto_basemap_key %} data-carto-key="{{ carto_basemap_key }}"{% endif %} aria-label="Interactive fleet device map"></div>
+</section>
+<section class="panel">
+  <div class="panel-head"><h2>Devices</h2><small>{{ supply.period_start_display or supply.period_start }} — {{ supply.period_end_display or supply.period_end }}</small></div>
+  <div class="device-table-wrap"><table class="device-table">
+    <thead><tr><th>Device</th><th>Status</th><th>Connectivity</th><th>Last sync</th><th>Uptime</th><th>GNSS / fix</th><th>Movement</th><th>Revenue</th></tr></thead>
+    <tbody>
+    {% for device in supply.devices %}
+      <tr>
+        <td>
+          <form class="device-alias" data-api="/api/v1/supply/devices/{{ device.device_id }}" data-method="PATCH" data-json data-csrf="{{ csrf_token }}" data-redirect="/supply">
+            <input name="display_name" value="{{ device.label }}" maxlength="80" required aria-label="Device display name">
+            <button class="secondary" type="submit">Save</button>
+          </form>
+          <a href="/supply/devices/{{ device.device_id }}"><small>{{ device.device_id }}</small></a>
+        </td>
+        <td><span class="status {{ device.connectivity }}">{{ device.connectivity }}</span><small>{{ device.status }}</small></td>
+        <td>
+          <strong>{{ device.link_mode }}</strong>
+          {% if device.link_mode == "Cellular" and device.cellular_telemetry %}
+            <small>{{ device.cellular_telemetry.operator_name or "Carrier unavailable" }} · {{ device.cellular_telemetry.registration_state|replace("_", " ")|title if device.cellular_telemetry.registration_state else "Registration unavailable" }}</small>
+            {% if device.cellular_usage_display.last_interval and device.cellular_usage_display.last_interval.total_bytes %}
+              <small>Since last phone home: {{ device.cellular_usage_display.last_interval.total_bytes }}</small>
+            {% endif %}
+          {% elif device.link_mode == "Unknown" %}
+            <small>No link type reported</small>
+          {% endif %}
+        </td>
+        <td>{{ device.last_sync_display or "Never" }}<small>Cursor {{ device.last_ack_cursor or "—" }}</small></td>
+        <td>{{ device.uptime_display or "Unavailable" }}</td>
+        <td>{% if device.current_fix %}{{ "%.5f"|format(device.current_fix.latitude) }}, {{ "%.5f"|format(device.current_fix.longitude) }}<small>{% if device.current_fix.confidence is defined %}Confidence {{ "%.0f"|format(device.current_fix.confidence * 100) }}% · {% endif %}{{ device.current_fix.observed_at_display or device.current_fix.observed_at }}</small>{% else %}No fix{% endif %}</td>
+        <td>{% if device.movement_warning %}<span class="warning">Warning</span><small>{{ device.movement_alert_count }} alert(s)</small>{% else %}<span class="positive">Clear</span>{% endif %}</td>
+        <td>{% for currency, amount in device.revenue.currencies.items() %}<strong>{{ currency }} {{ "%.2f"|format(amount.period_revenue_minor / 100) }}</strong><small>Lifetime {{ "%.2f"|format(amount.lifetime_revenue_minor / 100) }}</small>{% else %}—{% endfor %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8"><div class="empty">No fleet devices are available. Check the fleet source status above.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Overview — TMAds{% endblock %}
+{% block head %}
+  <script src="/static/dashboard.js" defer></script>
+{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Control plane</p><h1>Good evening{% if session.display_name %}, {{ session.display_name }}{% endif %}.</h1><p>From prepaid funds to immutable contracts, everything is visible here.</p></div><a class="button" href="/campaigns">Create campaign</a></section>
+<section class="panel plays-card" data-plays-card data-api="/api/v1/reports/plays-over-time">
+  <div class="panel-head plays-head">
+    <div>
+      <h2>Plays over time</h2>
+      <small data-plays-summary>Fleet plays across your campaigns</small>
+    </div>
+    <div class="plays-toolbar">
+      <div class="plays-menu" data-plays-menu="campaigns">
+        <button type="button" class="secondary" data-plays-toggle="campaigns" aria-expanded="false">All campaigns</button>
+        <div class="plays-menu-panel" hidden>
+          <label class="check"><input type="checkbox" data-plays-all checked> All campaigns</label>
+          <div class="plays-campaign-list" data-plays-campaigns></div>
+          <button type="button" class="secondary" data-plays-apply-campaigns>Apply</button>
+        </div>
+      </div>
+      <div class="plays-menu" data-plays-menu="range">
+        <button type="button" class="secondary" data-plays-toggle="range" aria-expanded="false">Last 30 days</button>
+        <div class="plays-menu-panel" hidden>
+          <div class="plays-range-list">
+            <button type="button" data-plays-range="last_7d">Last 7 days</button>
+            <button type="button" data-plays-range="last_30d">Last 30 days</button>
+            <button type="button" data-plays-range="last_90d">Last 90 days</button>
+            <button type="button" data-plays-range="this_month">This month</button>
+            <button type="button" data-plays-range="last_12m">Last 12 months</button>
+            <button type="button" data-plays-range="custom">Custom</button>
+          </div>
+          <div class="plays-custom" data-plays-custom hidden>
+            <label>From <input type="date" data-plays-from></label>
+            <label>To <input type="date" data-plays-to></label>
+            <button type="button" class="secondary" data-plays-apply-custom>Apply range</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="plays-chart" data-plays-chart role="img" aria-label="Plays over time"></div>
+</section>
+<section class="metric-grid">
+  <article><span>Organizations</span><strong>{{ organizations|length }}</strong><small>Advertiser workspaces</small></article>
+  <article><span>Campaigns</span><strong>{{ campaigns|length }}</strong><small>Across your organizations</small></article>
+  <article><span>Published bids</span><strong>{{ campaigns|selectattr("status","equalto","ACTIVE")|list|length }}</strong><small>Campaigns currently active</small></article>
+  <article><span>Available funds</span><strong>${{ "%.2f"|format(wallet_totals.available_minor / 100) }}</strong><small>${{ "%.2f"|format(wallet_totals.reserved_minor / 100) }} reserved</small></article>
+</section>
+<section class="split">
+  <article class="panel"><div class="panel-head"><h2>Campaigns</h2><a href="/campaigns">View all</a></div>
+  {% for campaign in campaigns %}<a class="row-link" href="/campaigns/{{ campaign.id }}"><div><strong>{{ campaign.name }}</strong><small>{{ campaign.description or "No description" }}</small></div><span class="status {{ campaign.status|lower }}">{{ campaign.status }}</span></a>{% else %}<div class="empty">Create an organization, add demo funds, then launch your first campaign.</div>{% endfor %}</article>
+  <article class="panel"><div class="panel-head"><h2>Recent audit</h2><a href="/audit">Full history</a></div>
+  {% for event in events %}<div class="timeline"><i></i><div><strong>{{ event.action }}</strong><small>{{ event.object_type }} · {{ event.created_at }}</small></div></div>{% else %}<div class="empty">Activity will appear here.</div>{% endfor %}</article>
+</section>
+{% endblock %}

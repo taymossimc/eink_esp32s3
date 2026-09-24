@@ -4,16 +4,21 @@
 #include "cache/frame_cache.h"
 #include "carousel/carousel.h"
 #include "config/device_config.h"
+#include "display/display_panel.h"
+#include "display/display_identity.h"
 #include "image/image_pipeline.h"
 #include "log/phone_home_log.h"
 #include "modem/modem.h"
 #include "network/network_manager.h"
 #include "power/power.h"
 #include "sms/sms_store.h"
+#include "storage/usb_campaign_storage.h"
+#include "tmads/tmads_campaign_cache.h"
 
 #include <ArduinoJson.h>
 #include <DNSServer.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
@@ -24,6 +29,11 @@
 #include <string.h>
 #include <time.h>
 
+#include "battery/ups_battery.h"
+#include "tmads/tmads_identity.h"
+
+#include <freertos/task.h>
+
 namespace {
 
 constexpr size_t kMaxUploadBytes = 3U * 1024U * 1024U;
@@ -33,7 +43,40 @@ DNSServer gDns;
 TaskHandle_t gTask = nullptr;
 SemaphoreHandle_t gActionMutex = nullptr;
 String gSsid;
+String gPortalKey;
+String gCsrfToken;
 bool gRunning = false;
+
+// First-run setup happens on the captive AP without credentials; requests
+// arriving over the station (LAN) interface must present the device key.
+bool requestFromSoftAp() {
+    const IPAddress remote = gServer.client().remoteIP();
+    const IPAddress ap = WiFi.softAPIP();
+    return remote[0] == ap[0] && remote[1] == ap[1] && remote[2] == ap[2];
+}
+
+void ensurePortalKey() {
+    Preferences prefs;
+    if (!prefs.begin("portal", false)) return;
+    gPortalKey = prefs.getString("key", "");
+    if (gPortalKey.isEmpty()) {
+        char generated[13] = {};
+        snprintf(generated, sizeof(generated), "%06lX%06lX",
+                 static_cast<unsigned long>(esp_random() & 0xFFFFFF),
+                 static_cast<unsigned long>(esp_random() & 0xFFFFFF));
+        gPortalKey = generated;
+        prefs.putString("key", gPortalKey);
+    }
+    prefs.end();
+}
+
+bool portalAuthorized() {
+    if (requestFromSoftAp()) return true;
+    if (gPortalKey.isEmpty()) return false;
+    const String header = gServer.header("X-Portal-Key");
+    if (header.length() && header == gPortalKey) return true;
+    return gServer.hasArg("key") && gServer.arg("key") == gPortalKey;
+}
 
 struct PendingActions {
     uint8_t *upload = nullptr;
@@ -88,31 +131,85 @@ img{max-width:100%;max-height:360px;border:1px solid #888}.ok{color:#198754}.bad
 <label><span>SIM PIN</span><input name=pin type=password maxlength=8 placeholder="unchanged"></label><label><span>Clear secrets</span><span><input name=clearPass type=checkbox value=1> APN password <input name=clearPin type=checkbox value=1> SIM PIN</span></label>
 <label><span>Allow roaming</span><select name=roaming><option value=1>Yes</option><option value=0>No</option></select></label>
 </div><p class=muted>Common suggestions: Koodo sp.koodo.com, AT&amp;T broadband, T-Mobile fast.t-mobile.com, Verizon vzwinternet. MVNOs may require their own APN.</p><button>Save cellular settings</button></form></section>
-<section id=wifi><h2>Wi-Fi</h2><div class=card><label><span>Global Wi-Fi</span><select id=wifiEnabled><option value=1>Enabled</option><option value=0>Disabled</option></select></label><p><button onclick="saveWifiToggle()">Save toggle</button> <button onclick="scanWifi()">Scan networks</button></p><div id=scan></div></div>
+<section id=wifi><h2>Wi-Fi</h2><div class=card><label><span>Global Wi-Fi</span><select id=wifiEnabled><option value=1>Enabled</option><option value=0>Disabled</option></select></label><p><button onclick="saveWifiToggle()">Save toggle</button> <button onclick="scanWifi()">Scan networks</button></p><p class=muted>Tap a network to join it immediately.</p><div id=scan></div></div>
 <form id=wifiForm class=card><div class=grid><label>Profile slot<select name=slot><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label><label>SSID<input name=ssid required maxlength=32></label><label>Password<input name=password type=password maxlength=64 placeholder="unchanged"></label><label>Enabled<select name=enabled><option value=1>Yes</option><option value=0>No</option></select></label><label><span><input name=clearPassword type=checkbox value=1> Clear saved password</span></label></div><button>Save network</button></form><div id=profiles></div></section>
 <section id=sms><h2>SMS Inbox</h2><p><button onclick=loadSms()>Refresh</button> <button onclick=clearSms()>Clear archive</button></p><div id=smsList></div></section>
 <section id=home><h2>Phone Home Events</h2><p><button onclick=loadLogs()>Refresh</button> <button onclick=clearLogs()>Clear log</button></p><div id=logs></div></section>
 <section id=media><h2>Media</h2><div class=grid><div class=card><h3>Current</h3><div id=currentMeta></div><img src="/media/current.bmp" onerror="this.style.display='none'"><p><a class=btn href="/media/current.bmp?download=1">Download</a></p></div><div class=card><h3>Next</h3><div id=nextMeta></div><img src="/media/next.bmp" onerror="this.style.display='none'"><p><a class=btn href="/media/next.bmp?download=1">Download</a></p></div></div>
 <form id=orientationForm class=card><label>Display orientation<select name=orientation><option value=0>Portrait</option><option value=90>Landscape clockwise</option><option value=180>Portrait inverted</option><option value=270>Landscape counterclockwise</option></select></label><button>Save orientation</button></form>
-<form id=uploadForm class=card enctype=multipart/form-data><label>Upload JPEG or PNG as next<input name=media type=file accept=".jpg,.jpeg,.png,image/jpeg,image/png" required></label><button>Upload as Next</button></form>
+<form id=uploadForm class=card enctype=multipart/form-data><label>Upload JPEG, PNG, WebP, or SVG as next<input name=media type=file accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml" required></label><p class=muted id=convertNote>WebP and SVG are converted in this browser before upload.</p><button>Upload as Next</button></form>
+<div class=card><h3>Campaign cache</h3><div id=campaignSummary>Loading…</div></div>
 <p><button onclick=refreshDisplay()>Refresh now and queue old current</button></p></section>
 <section id=speed><h2>Bandwidth Test</h2><div class=card><label>Download size<select id=speedBytes><option value=262144>256 KB</option><option value=1048576 selected>1 MB</option><option value=5242880>5 MB</option></select></label><p><button onclick="speed('wifi')">Test Wi-Fi</button> <button onclick="speed('cellular')">Test cellular</button></p><div id=speedResult></div></div></section>
 <section id=diag><h2>Diagnostics</h2><button onclick=loadStatus()>Refresh</button><pre id=diagnostics class=card></pre></section>
 <script>
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function tab(id){document.querySelectorAll('section').forEach(x=>x.classList.toggle('on',x.id==id));if(id=='sms')loadSms();if(id=='home')loadLogs();if(id=='media')loadMedia()}tab('cell');
-async function api(url,opt){let r=await fetch(url,opt);let t=await r.text();if(!r.ok)throw Error(t);try{return JSON.parse(t)}catch{return t}}
+let deviceKey=localStorage.getItem('portalKey')||'';
+let csrfToken='';
+async function api(url,opt){opt=opt||{};const mutation=(opt.method||'GET').toUpperCase()!='GET';opt.headers=Object.assign({},opt.headers,deviceKey?{'X-Portal-Key':deviceKey}:{},mutation&&csrfToken?{'X-CSRF-Token':csrfToken}:{});let r=await fetch(url,opt);
+if(r.status==401){const entered=prompt('Enter the device key (shown on the setup AP diagnostics page):');if(entered){deviceKey=entered.trim();localStorage.setItem('portalKey',deviceKey);return api(url,opt)}}
+let t=await r.text();if(!r.ok)throw Error(t);try{return JSON.parse(t)}catch{return t}}
 function formPost(form,url){form.addEventListener('submit',async e=>{e.preventDefault();try{await api(url,{method:'POST',body:new URLSearchParams(new FormData(form))});await loadStatus();alert('Saved')}catch(x){alert(x)}})}
 formPost($('#cellForm'),'/api/config/cellular');formPost($('#wifiForm'),'/api/config/wifi');formPost($('#orientationForm'),'/api/config/orientation');
-$('#uploadForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/media/upload',{method:'POST',body:new FormData(e.target)});alert('Upload queued for processing');setTimeout(loadMedia,2500)}catch(x){alert(x)}};
-async function loadStatus(){let d=await api('/api/status');$('#summary').innerHTML=`AP <b>${esc(d.ap.ssid)}</b> · ${esc(d.ap.ip)} · 5V ${d.rail?'ON':'OFF'} · ${esc(d.action)}`;$('#diagnostics').textContent=JSON.stringify(d,null,2);$('#wifiEnabled').value=d.config.wifiEnabled?1:0;Object.assign($('#cellForm').elements,{ });let f=$('#cellForm').elements;f.autoApn.value=d.config.autoApn?1:0;f.apn.value=d.config.apn;f.user.value=d.config.user;f.pdp.value=d.config.pdp;f.auth.value=d.config.auth;f.roaming.value=d.config.roaming?1:0;$('#orientationForm').elements.orientation.value=d.config.orientation;$('#profiles').innerHTML=d.config.profiles.map((p,i)=>`<div class=card>Slot ${i}: <b>${esc(p.ssid||'(empty)')}</b> ${p.enabled?'enabled':'disabled'} ${p.hasPassword?'(password saved)':''}</div>`).join('');$('#speedResult').textContent=d.bandwidth}
-async function scanWifi(){let d=await api('/api/wifi/scan');$('#scan').innerHTML=d.networks.map(n=>`<button type=button onclick="document.querySelector('#wifiForm [name=ssid]').value=${JSON.stringify(n.ssid)}">${esc(n.ssid)} (${n.rssi} dBm${n.secured?', secured':''})</button> `).join('')}
+let currentOrientation=0;
+async function convertForUpload(file){
+const name=(file.name||'').toLowerCase();
+if(name.endsWith('.jpg')||name.endsWith('.jpeg')||name.endsWith('.png'))return file;
+const landscape=currentOrientation==90||currentOrientation==270;
+const w=landscape?1600:1200,h=landscape?1200:1600;
+let bmp;
+if('createImageBitmap' in window&&!name.endsWith('.svg')){bmp=await createImageBitmap(file,{imageOrientation:'from-image'})}
+else{const url=URL.createObjectURL(file);bmp=await new Promise((ok,err)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=err;i.src=url});bmp._url=url}
+const sw=bmp.width||bmp.naturalWidth,sh=bmp.height||bmp.naturalHeight;
+if(!sw||!sh)throw Error('Image could not be decoded in this browser');
+const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');
+ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+const s=Math.max(w/sw,h/sh);const dw=sw*s,dh=sh*s;
+ctx.drawImage(bmp,(w-dw)/2,(h-dh)/2,dw,dh);
+if(bmp.close)bmp.close();if(bmp._url)URL.revokeObjectURL(bmp._url);
+const blob=await new Promise(ok=>c.toBlob(ok,'image/jpeg',0.92));
+if(!blob)throw Error('Browser conversion failed');
+return new File([blob],name.replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'});
+}
+$('#uploadForm').onsubmit=async e=>{e.preventDefault();try{
+const raw=e.target.media.files[0];if(!raw)return;
+$('#convertNote').textContent='Preparing image…';
+let converted;
+try{converted=await convertForUpload(raw)}
+catch(browserError){
+  const lower=(raw.name||'').toLowerCase();
+  if(!lower.endsWith('.webp')&&!lower.endsWith('.svg'))throw browserError;
+  converted=raw;
+  $('#convertNote').textContent='Browser conversion unavailable; using device decoder…';
+}
+const body=new FormData();body.set('media',converted,converted.name);
+await api('/api/media/upload',{method:'POST',body});
+$('#convertNote').textContent='Uploaded '+converted.name+' ('+Math.round(converted.size/1024)+' KB)';
+alert('Upload queued for processing');setTimeout(loadMedia,2500)}catch(x){$('#convertNote').textContent='';alert(x)}};
+async function loadStatus(){let d=await api('/api/status');csrfToken=d.csrfToken||csrfToken;currentOrientation=d.config.orientation;
+let batt=d.battery&&d.battery.available?` · Battery ${d.battery.socPercent!=null?d.battery.socPercent+'%':(d.battery.voltageV.toFixed(2)+' V')}`:'';
+$('#summary').innerHTML=`AP <b>${esc(d.ap.ssid)}</b> · ${esc(d.ap.ip)} · 5V ${d.rail?'ON':'OFF'}${batt} · ${esc(d.action)}`;
+$('#diagnostics').textContent=JSON.stringify(d,null,2);$('#wifiEnabled').value=d.config.wifiEnabled?1:0;let f=$('#cellForm').elements;f.autoApn.value=d.config.autoApn?1:0;f.apn.value=d.config.apn;f.user.value=d.config.user;f.pdp.value=d.config.pdp;f.auth.value=d.config.auth;f.roaming.value=d.config.roaming?1:0;$('#orientationForm').elements.orientation.value=d.config.orientation;$('#profiles').innerHTML=d.config.profiles.map((p,i)=>`<div class=card>Slot ${i}: <b>${esc(p.ssid||'(empty)')}</b> ${p.enabled?'enabled':'disabled'} ${p.hasPassword?'(password saved)':''}</div>`).join('');$('#speedResult').textContent=d.bandwidth;
+if(d.campaignCache){let c=d.campaignCache;let mib=b=>(b/1048576).toFixed(1)+' MiB';
+$('#campaignSummary').innerHTML=`Catalog: <b>${c.cachedCount??0}/${c.assetCount??0}</b> assets cached · USB campaign data ${mib(c.usbCampaignBytes||0)} (${c.usbActive?'USB active':'USB absent'}) · LittleFS framebuffers ${mib(c.littlefsUsedBytes||0)} of ${mib(c.littlefsTotalBytes||0)}<br>`+
+(c.assets||[]).map(a=>`<small>${esc(a.campaignId)} [${esc(a.status)}] ${a.eligible?'eligible':'preload'} ${a.cached?'✓cached':'…missing'}</small>`).join('<br>')}}
+async function joinWifi(ssid,secured){let password='';if(secured){password=prompt(`Password for ${ssid}:`)||'';if(secured&&!password)return}
+$('#scan').innerHTML='Joining '+esc(ssid)+'…';
+try{let d=await api('/api/wifi/join',{method:'POST',body:new URLSearchParams({ssid,password})});
+$('#scan').innerHTML=d.connected?`Connected to ${esc(d.ssid)} at ${esc(d.ip)}`:'Saved, but connection failed — check the password';loadStatus()}catch(x){$('#scan').innerHTML='';alert(x)}}
+async function scanWifi(){$('#scan').textContent='Scanning…';let d=await api('/api/wifi/scan');$('#scan').innerHTML=d.networks.map(n=>`<button type=button onclick='joinWifi(${JSON.stringify(n.ssid)},${n.secured})'>${esc(n.ssid)} (${n.rssi} dBm${n.secured?', secured':''})</button> `).join('')||'No networks found'}
 async function saveWifiToggle(){await api('/api/config/wifi-toggle',{method:'POST',body:new URLSearchParams({enabled:$('#wifiEnabled').value})});loadStatus()}
 async function loadSms(){let d=await api('/api/sms');$('#smsList').innerHTML=d.messages.map(m=>`<div class=msg><b>${esc(m.sender)}</b> · ${esc(m.timestamp)}<br>${esc(m.body)}</div>`).join('')||'<p>No archived messages.</p>'}
 async function clearSms(){if(confirm('Delete archived SMS history?')){await api('/api/sms/clear',{method:'POST'});loadSms()}}
 async function loadLogs(){let d=await api('/api/logs');$('#logs').innerHTML=d.events.map(e=>`<div class=msg><b class=${e.success?'ok':'bad'}>${esc(e.result)}</b> · ${esc(e.transport)} · ${e.durationMs} ms · ${e.bytes} bytes<br>${esc(e.endpoint)}<br><span class=muted>${esc(e.trigger)} ${esc(e.fallback)}</span></div>`).join('')||'<p>No events.</p>'}
 async function clearLogs(){if(confirm('Clear phone-home history?')){await api('/api/logs/clear',{method:'POST'});loadLogs()}}
-async function loadMedia(){let d=await api('/api/media');$('#currentMeta').textContent=d.current.available?`${d.current.name} · ${d.current.orientation}° · ${d.current.origin}`:'Not captured yet';$('#nextMeta').textContent=d.next.available?`${d.next.name} · ${d.next.orientation}° · ${d.next.origin}`:'No media queued'}
+function originLabel(o){return o=='tmads'?'Fleet campaign':o=='upload'?'Local override':o||''}
+async function loadMedia(){let d=await api('/api/media');$('#currentMeta').textContent=d.current.available?`${d.current.name} · ${d.current.orientation}° · ${originLabel(d.current.origin)}`:'Not captured yet';$('#nextMeta').textContent=d.next.available?`${d.next.name} · ${d.next.orientation}° · ${originLabel(d.next.origin)}`:'No media queued';
+const q=deviceKey?`?key=${encodeURIComponent(deviceKey)}`:'';
+document.querySelectorAll('#media img').forEach((img,i)=>{img.style.display='';img.src=(i==0?'/media/current.bmp':'/media/next.bmp')+q});
+document.querySelectorAll('#media a.btn').forEach((a,i)=>{a.href=(i==0?'/media/current.bmp':'/media/next.bmp')+(deviceKey?`?download=1&key=${encodeURIComponent(deviceKey)}`:'?download=1')});
+loadStatus()}
 async function refreshDisplay(){if(confirm('Display Next now and queue Current for the next tap?')){await api('/api/media/refresh',{method:'POST'});alert('Refresh queued')}}
 async function speed(t){await api('/api/bandwidth',{method:'POST',body:new URLSearchParams({transport:t,bytes:$('#speedBytes').value})});$('#speedResult').textContent='Test queued…';setTimeout(loadStatus,3000)}
 loadStatus();setInterval(loadStatus,10000);
@@ -138,13 +235,46 @@ void handleStatus() {
     JsonDocument doc;
     doc["ap"]["ssid"] = gSsid;
     doc["ap"]["ip"] = WiFi.softAPIP().toString();
+    doc["csrfToken"] = gCsrfToken;
+    if (requestFromSoftAp()) {
+        // The device key is only revealed on the captive AP so LAN clients
+        // cannot bootstrap themselves.
+        doc["ap"]["deviceKey"] = gPortalKey;
+    }
     doc["rail"] = powerRailIsOn();
+    BatteryTelemetry battery;
+    if (batteryRead(&battery)) {
+        doc["battery"]["available"] = true;
+        doc["battery"]["voltageV"] = battery.busVoltageV;
+        doc["battery"]["currentMa"] = battery.currentMa;
+        doc["battery"]["powerMw"] = battery.powerMw;
+        doc["battery"]["socPercent"] = battery.socPct;
+    } else {
+        doc["battery"]["available"] = false;
+        doc["battery"]["error"] = battery.error;
+    }
     doc["uptimeMs"] = millis();
     doc["heapFree"] = ESP.getFreeHeap();
     doc["psramFree"] = ESP.getFreePsram();
     doc["flashSize"] = ESP.getFlashChipSize();
     doc["littlefsUsed"] = LittleFS.usedBytes();
     doc["littlefsTotal"] = LittleFS.totalBytes();
+    const UsbCampaignStorageStatus usbStorage =
+        usbCampaignStorageGetStatus();
+    doc["usbStorage"]["hostReady"] = usbStorage.hostReady;
+    doc["usbStorage"]["connected"] = usbStorage.connected;
+    doc["usbStorage"]["mounted"] = usbStorage.mounted;
+    doc["usbStorage"]["writable"] = usbStorage.writable;
+    doc["usbStorage"]["vendorId"] = usbStorage.vendorId;
+    doc["usbStorage"]["productId"] = usbStorage.productId;
+    doc["usbStorage"]["product"] = usbStorage.product;
+    doc["usbStorage"]["manufacturer"] = usbStorage.manufacturer;
+    doc["usbStorage"]["serial"] = usbStorage.serial;
+    doc["usbStorage"]["capacityBytes"] = usbStorage.capacityBytes;
+    doc["usbStorage"]["totalBytes"] = usbStorage.totalBytes;
+    doc["usbStorage"]["freeBytes"] = usbStorage.freeBytes;
+    doc["usbStorage"]["sectorSize"] = usbStorage.sectorSize;
+    doc["usbStorage"]["error"] = usbStorage.error;
     doc["wifi"]["connected"] = networkWifiConnected();
     doc["wifi"]["ssid"] = networkWifiSsid();
     doc["wifi"]["ip"] = networkWifiIp();
@@ -174,6 +304,57 @@ void handleStatus() {
                  FrameCacheSlot::Current);
     addFrameJson(doc["media"]["next"].to<JsonObject>(),
                  FrameCacheSlot::Next);
+    doc["display"]["initialized"] = displayPanelInitialized();
+    doc["display"]["lastError"] = displayLastError();
+    const DisplayIdentity displayIdentity = displayIdentityGet();
+    doc["display"]["eeprom"]["present"] = displayIdentity.present;
+    doc["display"]["eeprom"]["width"] = displayIdentity.width;
+    doc["display"]["eeprom"]["height"] = displayIdentity.height;
+    doc["display"]["eeprom"]["color"] = displayIdentity.color;
+    doc["display"]["eeprom"]["pcbVariant"] = displayIdentity.pcbVariant;
+    doc["display"]["eeprom"]["displayVariant"] =
+        displayIdentity.displayVariant;
+    Preferences campaignPrefs;
+    if (campaignPrefs.begin("tmads_campaign", true)) {
+        doc["display"]["activeAssetHash"] =
+            campaignPrefs.getString("active_hash", "");
+        doc["display"]["lastCampaignError"] =
+            campaignPrefs.getString("last_error", "");
+        doc["display"]["lastCampaignAttemptSec"] =
+            campaignPrefs.getUInt("last_attempt", 0);
+        campaignPrefs.end();
+    }
+    tmads::CampaignCacheStatus campaignStatus;
+    if (tmads::campaignCacheGetStatus(&campaignStatus)) {
+        doc["campaignCache"]["ready"] = campaignStatus.ready;
+        doc["campaignCache"]["cursor"] = campaignStatus.cursor;
+        doc["campaignCache"]["assetCount"] = campaignStatus.assetCount;
+        doc["campaignCache"]["cachedCount"] = campaignStatus.cachedCount;
+        // LittleFS framebuffer usage and USB campaign bytes are reported
+        // separately so storage pressure is attributable.
+        doc["campaignCache"]["littlefsUsedBytes"] = campaignStatus.usedBytes;
+        doc["campaignCache"]["littlefsTotalBytes"] = campaignStatus.totalBytes;
+        doc["campaignCache"]["littlefsFreeBytes"] =
+            campaignStatus.totalBytes - campaignStatus.usedBytes;
+        doc["campaignCache"]["usbCampaignBytes"] =
+            campaignStatus.usbCampaignBytes;
+        doc["campaignCache"]["usbActive"] = campaignStatus.usbActive;
+        JsonArray cachedAssets =
+            doc["campaignCache"]["assets"].to<JsonArray>();
+        for (size_t i = 0; i < tmads::campaignCatalogCount(); ++i) {
+            tmads::CatalogAsset asset;
+            if (!tmads::campaignCatalogGet(i, &asset)) continue;
+            JsonObject item = cachedAssets.add<JsonObject>();
+            item["assetHash"] = asset.assetHash;
+            item["campaignId"] = asset.campaignId;
+            item["mediaId"] = asset.mediaId;
+            item["status"] = asset.campaignStatus;
+            item["variant"] = asset.variant;
+            item["bytes"] = asset.byteLength;
+            item["cached"] = asset.cached;
+            item["eligible"] = asset.eligible;
+        }
+    }
     doc["modem"]["ready"] = modem.ready;
     doc["modem"]["registered"] = modem.networkRegistered;
     doc["modem"]["dataConnected"] = modem.dataConnected;
@@ -502,36 +683,112 @@ void redirectCaptive() {
     gServer.send(302, "text/plain", "");
 }
 
+void handleWifiJoin() {
+    const String ssid = gServer.arg("ssid");
+    const String password = gServer.arg("password");
+    if (ssid.isEmpty() || ssid.length() > device_config::kMaxSsidLength) {
+        return sendError(400, "invalid ssid");
+    }
+    auto config = device_config::getSnapshot();
+    int slot = -1;
+    for (size_t i = 0; i < device_config::kMaxWifiProfiles; ++i) {
+        if (ssid == config.wifiProfiles[i].ssid) {
+            slot = static_cast<int>(i);
+            break;
+        }
+    }
+    if (slot < 0) {
+        for (size_t i = 0; i < device_config::kMaxWifiProfiles; ++i) {
+            if (config.wifiProfiles[i].ssid[0] == '\0') {
+                slot = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+    if (slot < 0) slot = device_config::kMaxWifiProfiles - 1;
+    auto &profile = config.wifiProfiles[slot];
+    strncpy(profile.ssid, ssid.c_str(), sizeof(profile.ssid) - 1);
+    profile.ssid[sizeof(profile.ssid) - 1] = '\0';
+    if (password.length()) {
+        strncpy(profile.password, password.c_str(),
+                sizeof(profile.password) - 1);
+        profile.password[sizeof(profile.password) - 1] = '\0';
+    }
+    profile.enabled = true;
+    config.wifiEnabled = true;
+    if (!device_config::save(config)) return sendError(500, "save failed");
+    JsonDocument doc;
+    doc["saved"] = true;
+    doc["slot"] = slot;
+    const bool connected = networkConnectSaved(20000);
+    doc["connected"] = connected;
+    if (connected) {
+        doc["ip"] = networkWifiIp();
+        doc["ssid"] = networkWifiSsid();
+    }
+    sendJson(doc);
+}
+
+void guarded(const char *path, HTTPMethod method,
+             WebServer::THandlerFunction handler) {
+    gServer.on(path, method, [handler, method]() {
+        if (!portalAuthorized()) {
+            return sendError(401, "device key required for LAN access");
+        }
+        if (method != HTTP_GET &&
+            gServer.header("X-CSRF-Token") != gCsrfToken) {
+            return sendError(403, "CSRF validation failed");
+        }
+        handler();
+    });
+}
+
+void guardedUpload(const char *path, WebServer::THandlerFunction handler,
+                   WebServer::THandlerFunction uploadHandler) {
+    gServer.on(path, HTTP_POST, [handler]() {
+        if (!portalAuthorized()) {
+            return sendError(401, "device key required for LAN access");
+        }
+        if (gServer.header("X-CSRF-Token") != gCsrfToken) {
+            return sendError(403, "CSRF validation failed");
+        }
+        handler();
+    }, uploadHandler);
+}
+
 void registerRoutes() {
+    const char *headers[] = {"X-Portal-Key", "X-CSRF-Token"};
+    gServer.collectHeaders(headers, 2);
     gServer.on("/", HTTP_GET, []() {
         gServer.send_P(200, "text/html", kPortalHtml);
         activityBump();
     });
-    gServer.on("/api/status", HTTP_GET, handleStatus);
-    gServer.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
-    gServer.on("/api/config/cellular", HTTP_POST, handleCellularSave);
-    gServer.on("/api/config/wifi", HTTP_POST, handleWifiSave);
-    gServer.on("/api/config/wifi-toggle", HTTP_POST, handleWifiToggle);
-    gServer.on("/api/config/orientation", HTTP_POST, handleOrientationSave);
-    gServer.on("/api/sms", HTTP_GET, handleSms);
-    gServer.on("/api/sms/clear", HTTP_POST, []() {
+    guarded("/api/status", HTTP_GET, handleStatus);
+    guarded("/api/wifi/scan", HTTP_GET, handleWifiScan);
+    guarded("/api/wifi/join", HTTP_POST, handleWifiJoin);
+    guarded("/api/config/cellular", HTTP_POST, handleCellularSave);
+    guarded("/api/config/wifi", HTTP_POST, handleWifiSave);
+    guarded("/api/config/wifi-toggle", HTTP_POST, handleWifiToggle);
+    guarded("/api/config/orientation", HTTP_POST, handleOrientationSave);
+    guarded("/api/sms", HTTP_GET, handleSms);
+    guarded("/api/sms/clear", HTTP_POST, []() {
         if (smsStoreClear()) gServer.send(200, "application/json", "{\"ok\":true}");
         else sendError(500, "clear failed");
     });
-    gServer.on("/api/logs", HTTP_GET, handleLogs);
-    gServer.on("/api/logs/clear", HTTP_POST, []() {
+    guarded("/api/logs", HTTP_GET, handleLogs);
+    guarded("/api/logs/clear", HTTP_POST, []() {
         if (phone_home_log::clear()) gServer.send(200, "application/json", "{\"ok\":true}");
         else sendError(500, "clear failed");
     });
-    gServer.on("/api/media", HTTP_GET, handleMediaInfo);
-    gServer.on("/media/current.bmp", HTTP_GET,
-               []() { handleFrameDownload(FrameCacheSlot::Current); });
-    gServer.on("/media/next.bmp", HTTP_GET,
-               []() { handleFrameDownload(FrameCacheSlot::Next); });
-    gServer.on("/api/media/upload", HTTP_POST, handleUploadComplete,
-               handleUploadChunk);
-    gServer.on("/api/media/refresh", HTTP_POST, handleManualRefresh);
-    gServer.on("/api/bandwidth", HTTP_POST, handleBandwidth);
+    guarded("/api/media", HTTP_GET, handleMediaInfo);
+    guarded("/media/current.bmp", HTTP_GET,
+            []() { handleFrameDownload(FrameCacheSlot::Current); });
+    guarded("/media/next.bmp", HTTP_GET,
+            []() { handleFrameDownload(FrameCacheSlot::Next); });
+    guardedUpload("/api/media/upload", handleUploadComplete,
+                  handleUploadChunk);
+    guarded("/api/media/refresh", HTTP_POST, handleManualRefresh);
+    guarded("/api/bandwidth", HTTP_POST, handleBandwidth);
     gServer.on("/generate_204", HTTP_ANY, redirectCaptive);
     gServer.on("/hotspot-detect.html", HTTP_ANY, redirectCaptive);
     gServer.on("/connecttest.txt", HTTP_ANY, redirectCaptive);
@@ -556,6 +813,14 @@ bool configPortalBegin() {
     if (gRunning) return true;
     if (!gActionMutex) gActionMutex = xSemaphoreCreateMutex();
     if (!gActionMutex || !networkManagerBegin()) return false;
+    ensurePortalKey();
+    char csrf[25] = {};
+    snprintf(csrf, sizeof(csrf), "%08lX%08lX%08lX",
+             static_cast<unsigned long>(esp_random()),
+             static_cast<unsigned long>(esp_random()),
+             static_cast<unsigned long>(esp_random()));
+    gCsrfToken = csrf;
+    Serial.printf("Config portal: LAN device key %s\n", gPortalKey.c_str());
     uint64_t mac = ESP.getEfuseMac();
     char suffix[7] = {};
     snprintf(suffix, sizeof(suffix), "%06llX",
@@ -607,22 +872,47 @@ void configPortalProcessActions() {
 
     if (upload) {
         gLastAction = "normalizing upload";
-        uint8_t *frame = static_cast<uint8_t *>(
-            heap_caps_malloc(FRAME_CACHE_PAYLOAD_BYTES, MALLOC_CAP_SPIRAM));
-        size_t frameLength = 0;
-        const uint16_t orientation = static_cast<uint16_t>(
-            device_config::getSnapshot().displayOrientation);
-        const bool decoded =
-            frame && imageDecodeCropFill(upload, uploadLength, uploadName,
-                                         frame, FRAME_CACHE_PAYLOAD_BYTES,
-                                         &frameLength, orientation);
-        const bool stored =
-            decoded && frameCacheStoreSlot(FrameCacheSlot::Next, frame,
-                                           frameLength, uploadName,
-                                           orientation, "upload");
-        if (frame) heap_caps_free(frame);
+        // Decode on a dedicated large-stack worker; JPEG/PNG decoding on the
+        // Arduino loop stack has previously caused resets.
+        struct UploadJob {
+            uint8_t *data;
+            size_t length;
+            char name[96];
+            bool stored;
+            TaskHandle_t caller;
+        } job = {upload, uploadLength, {}, false,
+                 xTaskGetCurrentTaskHandle()};
+        strncpy(job.name, uploadName, sizeof(job.name) - 1);
+        auto worker = [](void *argument) {
+            auto *work = static_cast<UploadJob *>(argument);
+            uint8_t *frame = static_cast<uint8_t *>(heap_caps_malloc(
+                FRAME_CACHE_PAYLOAD_BYTES, MALLOC_CAP_SPIRAM));
+            size_t frameLength = 0;
+            const uint16_t orientation = static_cast<uint16_t>(
+                device_config::getSnapshot().displayOrientation);
+            const bool decoded =
+                frame && imageDecodeCropFill(work->data, work->length,
+                                             work->name, frame,
+                                             FRAME_CACHE_PAYLOAD_BYTES,
+                                             &frameLength, orientation);
+            work->stored =
+                decoded && frameCacheStoreSlot(FrameCacheSlot::Next, frame,
+                                               frameLength, work->name,
+                                               orientation, "upload");
+            if (frame) heap_caps_free(frame);
+            xTaskNotifyGive(work->caller);
+            vTaskDelete(nullptr);
+        };
+        TaskHandle_t task = nullptr;
+        if (xTaskCreatePinnedToCore(worker, "portal-upload", 24576, &job, 1,
+                                    &task, 0) == pdPASS) {
+            if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(60000)) == 0) {
+                vTaskDelete(task);
+                job.stored = false;
+            }
+        }
         heap_caps_free(upload);
-        gLastAction = stored ? "upload ready as next" : "upload failed";
+        gLastAction = job.stored ? "upload ready as next" : "upload failed";
         activityBump();
     }
     if (refresh) {

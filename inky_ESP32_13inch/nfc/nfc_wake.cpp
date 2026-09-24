@@ -1,9 +1,11 @@
 #include "nfc_wake.h"
 #include "nfc_config.h"
 #include "power/power.h"
+#include "tmads/tmads_identity.h"
 
 #include <Wire.h>
 #include <esp_sleep.h>
+#include <string.h>
 
 namespace {
 
@@ -102,6 +104,41 @@ class St25Dv16k {
         return i2cWriteByte(ST25DV_I2C_USER, ST25DV_DYN_GPO_CTRL, gpoDyn);
     }
 
+    bool readUserMemory(uint16_t offset, uint8_t *data, size_t length) {
+        if (!data || !length) return false;
+        size_t done = 0;
+        while (done < length) {
+            const size_t chunk = min(static_cast<size_t>(32), length - done);
+            if (!i2cReadReg(ST25DV_I2C_USER, offset + done, data + done,
+                            chunk)) {
+                return false;
+            }
+            done += chunk;
+        }
+        return true;
+    }
+
+    bool writeUserMemory(uint16_t offset, const uint8_t *data, size_t length) {
+        if (!data || !length) return false;
+        size_t done = 0;
+        while (done < length) {
+            const size_t chunk = min(static_cast<size_t>(4), length - done);
+            uint8_t existing[4] = {};
+            if (!i2cReadReg(ST25DV_I2C_USER, offset + done, existing, chunk)) {
+                return false;
+            }
+            if (memcmp(existing, data + done, chunk) != 0) {
+                if (!i2cWriteReg(ST25DV_I2C_USER, offset + done, data + done,
+                                 chunk)) {
+                    return false;
+                }
+                delay(6);
+            }
+            done += chunk;
+        }
+        return true;
+    }
+
  private:
     static bool i2cProbe(uint8_t addr) {
         Wire.beginTransmission(addr);
@@ -186,6 +223,45 @@ bool nfcConfigureWake() {
     return true;
 }
 
+bool nfcWriteUrl(const char *url) {
+    if (!url || strncmp(url, "https://", 8) != 0) {
+        Serial.println("NFC: shelf URL must use https://");
+        return false;
+    }
+    const char *suffix = url + 8;
+    const size_t suffixLength = strlen(suffix);
+    if (suffixLength > 244) {
+        Serial.println("NFC: shelf URL is too long");
+        return false;
+    }
+
+    uint8_t ndef[256] = {};
+    size_t length = 0;
+    ndef[length++] = 0xE1;  // NFC Forum Type 5 magic.
+    ndef[length++] = 0x40;  // Version 1.0, read/write access.
+    ndef[length++] = 0x40;  // 512 bytes of advertised NDEF capacity.
+    ndef[length++] = 0x05;  // Multiple-block read and special frame support.
+    ndef[length++] = 0x03;  // NDEF Message TLV.
+    const size_t recordLength = 5 + suffixLength;
+    ndef[length++] = static_cast<uint8_t>(recordLength);
+    ndef[length++] = 0xD1;  // MB, ME, SR, TNF=well-known.
+    ndef[length++] = 0x01;  // Type length.
+    ndef[length++] = static_cast<uint8_t>(1 + suffixLength);
+    ndef[length++] = 0x55;  // URI record type.
+    ndef[length++] = 0x04;  // URI prefix "https://".
+    memcpy(ndef + length, suffix, suffixLength);
+    length += suffixLength;
+    ndef[length++] = 0xFE;  // Terminator TLV.
+
+    if (!gNfc.writeUserMemory(0, ndef, length)) {
+        Serial.println("NFC: failed to write shelf URL");
+        return false;
+    }
+    Serial.printf("NFC: shelf URL ready (%u bytes)\n",
+                  static_cast<unsigned>(length));
+    return true;
+}
+
 void nfcOnWake() {
     beginNfcI2c();
     if (gNfc.begin()) {
@@ -243,6 +319,7 @@ bool nfcEnterDeepSleep() {
 
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
     esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(kNfcInt), 0);
+    tmads::identityScheduleTimerWake();
 
     Serial.printf("Entering deep sleep (wake on NFC tap, idle=%lus)\n",
                   static_cast<unsigned long>(IDLE_SLEEP_MS / 1000));

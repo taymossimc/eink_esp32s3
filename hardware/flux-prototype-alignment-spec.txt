@@ -1,0 +1,181 @@
+# Flux schematic alignment — bench prototype (Freenove ESP32-S3 N16R8)
+# Project: https://www.flux.ai/taymoss/esp32-s3-e-paper-nfc-controller~px
+# Source of truth: inky_ESP32_13inch firmware (DEV_Config.h, nfc_config.h, modem_config.h, power.cpp)
+
+## Required changes (3 items)
+
+1. Move EPD_DC from GPIO5/J1:6 to GPIO12 (DevKit J1 header pin 18).
+2. Replace dual-rail switching with single GPIO4-controlled 5V rail (display + modem).
+3. Lock J1 pinout to ESP32-S3-DevKitC-1 / Freenove N16R8 physical header positions.
+
+---
+
+## Firmware GPIO assignments
+
+| Function        | GPIO | Net name       |
+|-----------------|------|----------------|
+| NFC I2C SDA     | 1    | NFC_SDA        |
+| NFC I2C SCL     | 2    | NFC_SCL        |
+| NFC INT/GPO     | 21   | NFC_INT        |
+| 5V rail enable  | 4    | PERIPH_PWR_EN  |
+| EPD MOSI        | 6    | EPD_MOSI       |
+| EPD SCK         | 7    | EPD_SCK        |
+| EPD CS0 (CS_M)  | 8    | EPD_CS_M       |
+| EPD CS1 (CS_S)  | 9    | EPD_CS_S       |
+| Modem ESP TX    | 10   | MODEM_TX       |
+| Modem ESP RX    | 11   | MODEM_RX       |
+| EPD DC          | 12   | EPD_DC         |
+| UPS INA219 SDA  | 14   | BAT_SDA        |
+| UPS INA219 SCL  | 15   | BAT_SCL        |
+| EPD RST         | 17   | EPD_RST        |
+| EPD BUSY        | 18   | EPD_BUSY       |
+
+---
+
+## Power topology (prototype)
+
+- Waveshare UPS 3S (23884) regulated output feeds ESP32 DevKit 5V input (J1 pin 21).
+- **Measured UPS output: 5.3 V** (label net UPS_5V but document nominal/measured 5.3 V in properties and power budget).
+- UPS 3V3 aux rail (~3.3 V) feeds NFC always-on; exact measured value TBD.
+- GPIO4 HIGH enables ONE external switched 5V rail.
+- Switched 5V feeds: Pimoroni Inky 13.3" (PIM774) AND SIM7600G-H modem.
+- NFC MIKROE-3971 on always-on 3.3V (UPS_3V3) for wake-on-tap while 5V rail is OFF.
+- NO firmware-controlled separate 3.3V e-paper rail.
+- Boot: GPIO4 LOW ~3s then HIGH (modem power cycle). Sleep: GPIO4 LOW cuts 5V rail.
+
+---
+
+## J1 — DevKitC-1 J1 header (22-pin side)
+
+Label each used pin with silkscreen GPIO name AND physical pin number.
+
+| Pin | GPIO | Net            |
+|-----|------|----------------|
+| 4   | 4    | PERIPH_PWR_EN  |
+| 6   | 6    | EPD_MOSI       |
+| 7   | 7    | EPD_SCK        |
+| 8   | 15   | BAT_SCL        |
+| 10  | 17   | EPD_RST        |
+| 11  | 18   | EPD_BUSY       |
+| 12  | 8    | EPD_CS_M       |
+| 15  | 9    | EPD_CS_S       |
+| 16  | 10   | MODEM_TX       |
+| 17  | 11   | MODEM_RX       |
+| 18  | 12   | EPD_DC         |
+| 20  | 14   | BAT_SDA        |
+| 21  | 5V   | UPS_5V (from Waveshare UPS) |
+| 22  | GND  | GND            |
+
+Pins 1-3, 5, 9, 13-14, 19: unused — leave unconnected on carrier.
+
+---
+
+## J1B — DevKitC-1 J3 header (22-pin side, NFC)
+
+| Pin | GPIO | Net     |
+|-----|------|---------|
+| 4   | 1    | NFC_SDA |
+| 5   | 2    | NFC_SCL |
+| 18  | 21   | NFC_INT |
+| 1,21-22 | GND | GND  |
+
+Model as second row on J1 (pins 23-40) or separate J1B connector — either is fine if pin numbers match DevKit silkscreen.
+
+---
+
+## Connector updates
+
+### J2 UPS power (unchanged)
+- Pin1 UPS_5V, Pin2 UPS_3V3, Pin3 GND
+
+### J3 UPS monitor (unchanged concept)
+- Pin4 BAT_SCL, Pin8 BAT_SDA (to J1 pins 8 and 20)
+
+### J4 NFC mikroBUS (unchanged)
+- I2C pins 11/12, INT pin 15, 3V3 pin 7 from UPS_3V3
+
+### J5 E-paper 1x12
+- Pin2: switched 5V (PERIPH_5V_SW) — NOT separate 3V3 switch
+- Remove EPD_3V3_SW net entirely
+- SPI/control nets per GPIO table above
+
+### J6 Modem 1x4
+- Pin1: PERIPH_5V_SW (from switched 5.3 V UPS rail)
+- Pin2: GND
+- Pin3: MODEM_RX (modem TX -> ESP GPIO11)
+- Pin4: MODEM_TX (ESP GPIO10 -> modem RX)
+- **Modem UART logic: 3.3 V** — direct connect to ESP32 GPIO10/11, no level shifter on bench prototype
+
+---
+
+## ESP32 board geometry (Freenove ESP32-S3 WROOM N16R8, DevKitC-1 pinout)
+
+| Parameter | Value |
+|-----------|-------|
+| Pin pitch (each row) | 2.54 mm (0.1 in) |
+| Pins per row | 22 (J1 + J3/NFC side) |
+| Row span pin1→pin22 centers | 53.34 mm (21 × 2.54) |
+| Inter-row spacing J1↔J3 | 25.40 mm center-to-center |
+| Freenove PCB outline | ~57.2 × 28.2 mm |
+| Espressif DevKitC-1 reference | ~70 × 28 mm |
+| Carrier sizing | Match **header positions**, not overall PCB length |
+
+J1 pin 1 = 3V3; J3 pin 1 = GND. Schematic J1 = DevKit J1; J1B = DevKit J3 (NFC).
+Clearance: USB-C plug above board; Freenove camera connector beside board (GPIO12–16 region).
+
+---
+
+## Raspberry Pi mechanical interface (BOTTOM of carrier PCB)
+
+| Item | Spec |
+|------|------|
+| Connector | J8 (suggested): 2×20 **male** GPIO, **BOTTOM** layer, pins point down |
+| Pitch | 2.54 mm |
+| Pin 1 | **Lower-right** when viewing PCB from TOP (component side) |
+| Mounting holes | H1–H4: **2.75 mm** dia, **58.0 × 49.0 mm** center spacing (Pi HAT standard) |
+| Electrical | Mechanical only for now — do not wire Pi GPIO to ESP32 nets except common GND |
+
+Reference: github.com/raspberrypi/hats hat-board-mechanical.pdf
+
+---
+
+## Parts to remove/simplify
+
+Current schematic has dual P-MOS Q1 (NTMD6P02R2G) splitting EPD_3V3_SW and PERIPH_5V_SW, plus Q2 for 3V3 gate.
+
+Remove:
+- EPD_3V3_SW net and J5 pin1 connection to it
+- Q2, R1, R3, R5, C1, C2 (3V3 switch path)
+- Dual-channel use of Q1 — replace with single P-MOS 5V high-side switch
+
+Keep:
+- Q3 (N-ch gate driver) + R4, R6, R2, C3, C4 for GPIO4 -> 5V P-MOS gate
+- Or simplify to one P-MOS + one N-ch if cleaner
+
+Update all Role/Details properties: "bench prototype wiring" not "provisional dual-rail".
+
+---
+
+## Current Flux mismatches (as of last read)
+
+| Net            | Flux J1 pin | Should be      |
+|----------------|-------------|----------------|
+| EPD_DC         | 6           | 18 (GPIO12)    |
+| PERIPH_PWR_EN  | 5           | 4 (GPIO4)      |
+| NFC_SCL        | 4           | J3:5 (GPIO2)   |
+| NFC_SDA        | 3           | J3:4 (GPIO1)   |
+| UPS_5V         | 1           | 21 (5V)        |
+| GND            | 2           | 22 (GND)       |
+| BAT_SCL        | 14          | 8 (GPIO15)     |
+| BAT_SDA        | 13          | 20 (GPIO14)    |
+| EPD_SCK        | 8           | 7 (GPIO7)      |
+| EPD_MOSI       | 7           | 6 (GPIO6)      |
+| EPD_CS_M       | 9           | 12 (GPIO8)     |
+| EPD_CS_S       | 10          | 15 (GPIO9)     |
+| MODEM_TX       | 11          | 16 (GPIO10)    |
+| MODEM_RX       | 12          | 17 (GPIO11)    |
+| EPD_RST        | 15          | 10 (GPIO17)    |
+| EPD_BUSY       | 16          | 11 (GPIO18)    |
+| NFC_INT        | 17          | J3:18 (GPIO21) |
+
+Dual-rail nets to remove: EPD_3V3_SW, EPD_3V3_GATE, EPD_SW_NGATE

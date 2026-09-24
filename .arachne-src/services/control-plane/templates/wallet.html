@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Wallet — TMAds{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">{{ wallet.label }}</p><h1>${{ "%.2f"|format(wallet.balance_minor / 100) }} <small>USD</small></h1><p>Prepaid Campaign Funds are an internal advertising balance, not regulated escrow.</p></div></section>
+<section class="metric-grid">
+  <article><span>Available</span><strong>${{ "%.2f"|format(wallet.available_minor / 100) }}</strong></article>
+  <article><span>Reserved</span><strong>${{ "%.2f"|format(wallet.reserved_minor / 100) }}</strong></article>
+  <article><span>Spent</span><strong>${{ "%.2f"|format(wallet.spent_minor / 100) }}</strong></article>
+  <article><span>Deposited</span><strong>${{ "%.2f"|format(wallet.deposited_minor / 100) }}</strong><small>${{ "%.2f"|format(wallet.pending_minor / 100) }} pending</small></article>
+</section>
+{% if funding_return == "success" and funding_credited %}<div class="notice"><strong>Funds added.</strong> Stripe test checkout completed and the wallet was credited.</div>{% elif funding_return == "success" %}<div class="notice"><strong>Checkout submitted.</strong> Stripe is confirming payment. Refresh this page if the balance has not updated yet.</div>{% elif funding_return == "cancel" %}<div class="notice amber"><strong>Checkout cancelled.</strong> No funds were added.</div>{% endif %}
+<section class="split">
+  <article class="panel"><div class="panel-head"><h2>Transaction history</h2><span class="status active">Double-entry</span></div>
+  {% for transaction in transactions %}<div class="journal"><div><strong>{{ transaction.description }}</strong><small>{{ transaction.kind|replace("_", " ")|title }} · {{ transaction.created_at }} · {{ transaction.id }}</small></div><b class="{{ 'positive' if transaction.kind in ('demo_sandbox_deposit','stripe_test_deposit','grant_release') else '' }}">{{ '+' if transaction.kind in ('demo_sandbox_deposit','stripe_test_deposit','grant_release') else '' }}${{ "%.2f"|format(transaction.amount_minor / 100) }}</b></div>{% else %}<div class="empty">No transactions.</div>{% endfor %}</article>
+  <article class="panel"><h2>Add campaign funds</h2>
+  {% if funding_provider == "stripe" %}<div class="notice amber"><strong>Stripe test mode / sandbox.</strong> Stripe hosts checkout and no card data reaches TMAds. These internal campaign funds are not regulated escrow.</div>
+  <form data-api="/api/v1/organizations/{{ wallet.organization_id }}/wallet/deposits" data-method="POST" data-json data-idempotent data-checkout data-csrf="{{ csrf_token }}">
+    <label>Amount, cents <input name="amount_minor" type="number" value="10000" min="100" max="1000000" required></label><button>Continue to Stripe test checkout</button>
+  </form>
+  {% elif funding_provider == "demo" %}<div class="notice amber"><strong>Fake local demo funds.</strong> No Stripe checkout, charge, or real-money transfer occurs.</div>
+  <form data-api="/api/v1/organizations/{{ wallet.organization_id }}/wallet/deposits" data-method="POST" data-json data-idempotent data-csrf="{{ csrf_token }}" data-redirect="/organizations/{{ wallet.organization_id }}/wallet">
+    <input type="hidden" name="amount_minor" value="10000"><button>Add $100.00 fake demo funds</button>
+  </form>{% else %}<div class="notice">Funding is disabled. Select the Stripe test provider or explicitly select the local demo provider.</div>{% endif %}
+  {% if pending_deposits %}<h2>Recent deposits</h2>{% for deposit in pending_deposits %}<div class="journal"><div><strong>${{ "%.2f"|format(deposit.amount_minor / 100) }} {{ deposit.currency }}</strong><small>{{ deposit.created_at }}</small></div><span class="status {{ 'active' if deposit.status == 'paid' else 'draft' }}">{{ deposit.status|upper }}</span></div>{% endfor %}{% endif %}
+  </article>
+</section>
+{% if grants %}<section class="panel"><div class="panel-head"><h2>Grant commitments</h2></div>
+{% for grant in grants %}<div class="journal"><div><strong>{{ grant.grant_id }}</strong><small>{{ grant.device_id }} · {{ grant.status }}</small></div><b>${{ "%.2f"|format(grant.pending_minor / 100) }} pending</b></div>{% endfor %}
+</section>{% endif %}
+{% endblock %}

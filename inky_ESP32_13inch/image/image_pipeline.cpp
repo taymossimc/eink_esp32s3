@@ -4,6 +4,9 @@
 
 #include <PNGdec.h>
 #include <JPEGDEC.h>
+#include <nanosvg.h>
+#include <nanosvgrast.h>
+#include <src/webp/decode.h>
 #include <esp_heap_caps.h>
 #include <math.h>
 #include <string.h>
@@ -369,6 +372,135 @@ bool decodePngToBuffer(const uint8_t *data, size_t len, uint8_t *outBuffer) {
     return ok;
 }
 
+bool decodeRgb565ToBuffer(const uint16_t *pixels, int width, int height,
+                          uint8_t *outBuffer) {
+    if (!pixels || width <= 0 || height <= 0) return false;
+    gPipe.rawW = width;
+    gPipe.rawH = height;
+    gPipe.sourceOrientation = 1;
+    setupCropFill(width, height);
+    gPipe.out = outBuffer;
+    initOutputBuffer(outBuffer);
+    for (int y = 0; y < height; ++y) {
+        const uint16_t *row = pixels + static_cast<size_t>(y) * width;
+        for (int x = 0; x < width; ++x) {
+            const uint16_t rgb565 = row[x];
+            writeSourcePixel(
+                x, y,
+                static_cast<uint8_t>(((rgb565 >> 11) & 0x1F) * 255 / 31),
+                static_cast<uint8_t>(((rgb565 >> 5) & 0x3F) * 255 / 63),
+                static_cast<uint8_t>((rgb565 & 0x1F) * 255 / 31));
+        }
+        delay(0);
+    }
+    gPipe.out = nullptr;
+    return true;
+}
+
+bool decodeWebpToBuffer(const uint8_t *data, size_t len, uint8_t *outBuffer) {
+    int sourceWidth = 0;
+    int sourceHeight = 0;
+    if (!WebPGetInfo(data, len, &sourceWidth, &sourceHeight) ||
+        sourceWidth <= 0 || sourceHeight <= 0) {
+        return false;
+    }
+    constexpr int kMaxDecodedDimension = 800;
+    const float downscale =
+        fminf(1.0f, static_cast<float>(kMaxDecodedDimension) /
+                       max(sourceWidth, sourceHeight));
+    const int width = max(1, static_cast<int>(sourceWidth * downscale));
+    const int height = max(1, static_cast<int>(sourceHeight * downscale));
+    const size_t bytes = static_cast<size_t>(width) * height * sizeof(uint16_t);
+    uint16_t *pixels = static_cast<uint16_t *>(
+        heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM));
+    if (!pixels) return false;
+
+    WebPDecoderConfig config;
+    if (!WebPInitDecoderConfig(&config)) {
+        heap_caps_free(pixels);
+        return false;
+    }
+    config.options.use_scaling = 1;
+    config.options.scaled_width = width;
+    config.options.scaled_height = height;
+    config.output.colorspace = MODE_RGB_565;
+    config.output.is_external_memory = 1;
+    config.output.u.RGBA.rgba = reinterpret_cast<uint8_t *>(pixels);
+    config.output.u.RGBA.stride = width * sizeof(uint16_t);
+    config.output.u.RGBA.size = bytes;
+    const VP8StatusCode status = WebPDecode(data, len, &config);
+    const bool ok =
+        status == VP8_STATUS_OK &&
+        decodeRgb565ToBuffer(pixels, width, height, outBuffer);
+    WebPFreeDecBuffer(&config.output);
+    heap_caps_free(pixels);
+    return ok;
+}
+
+bool decodeSvgToBuffer(const uint8_t *data, size_t len, uint8_t *outBuffer) {
+    char *source = static_cast<char *>(
+        heap_caps_malloc(len + 1, MALLOC_CAP_SPIRAM));
+    if (!source) return false;
+    memcpy(source, data, len);
+    source[len] = '\0';
+    NSVGimage *image = nsvgParse(source, "px", 96.0f);
+    heap_caps_free(source);
+    if (!image || image->width <= 0 || image->height <= 0) {
+        if (image) nsvgDelete(image);
+        return false;
+    }
+
+    // Rasterize at half panel resolution to bound PSRAM usage, then use the
+    // common crop/rotation/quantization path to fill the packed framebuffer.
+    const int width = gPipe.logicalW / 2;
+    const int height = gPipe.logicalH / 2;
+    const size_t bytes = static_cast<size_t>(width) * height * 4U;
+    uint8_t *rgba = static_cast<uint8_t *>(
+        heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM));
+    NSVGrasterizer *rasterizer = nsvgCreateRasterizer();
+    if (!rgba || !rasterizer) {
+        if (rgba) heap_caps_free(rgba);
+        if (rasterizer) nsvgDeleteRasterizer(rasterizer);
+        nsvgDelete(image);
+        return false;
+    }
+    const float scale =
+        fmaxf(static_cast<float>(width) / image->width,
+              static_cast<float>(height) / image->height);
+    const float tx = (width - image->width * scale) * 0.5f;
+    const float ty = (height - image->height * scale) * 0.5f;
+    nsvgRasterize(rasterizer, image, tx, ty, scale, rgba, width, height,
+                  width * 4);
+
+    gPipe.rawW = width;
+    gPipe.rawH = height;
+    gPipe.sourceOrientation = 1;
+    setupCropFill(width, height);
+    gPipe.out = outBuffer;
+    initOutputBuffer(outBuffer);
+    for (int y = 0; y < height; ++y) {
+        const uint8_t *row = rgba + static_cast<size_t>(y) * width * 4U;
+        for (int x = 0; x < width; ++x) {
+            const uint8_t *pixel = row + x * 4;
+            // NanoSVG clears transparent pixels; composite them over white.
+            const uint8_t alpha = pixel[3];
+            const uint8_t r =
+                static_cast<uint8_t>((pixel[0] * alpha + 255 * (255 - alpha)) / 255);
+            const uint8_t g =
+                static_cast<uint8_t>((pixel[1] * alpha + 255 * (255 - alpha)) / 255);
+            const uint8_t b =
+                static_cast<uint8_t>((pixel[2] * alpha + 255 * (255 - alpha)) / 255);
+            writeSourcePixel(x, y, r, g, b);
+        }
+        delay(0);
+    }
+    gPipe.out = nullptr;
+    nsvgDeleteRasterizer(rasterizer);
+    nsvgDelete(image);
+    heap_caps_free(rgba);
+    return true;
+}
+
 }  // namespace
 
 bool imageDecodeCropFill(const uint8_t *data, size_t len, const char *filename,
@@ -393,6 +525,10 @@ bool imageDecodeCropFill(const uint8_t *data, size_t len, const char *filename,
         decoded = decodeJpegToBuffer(data, len, outBuffer);
     } else if (endsWithIgnoreCase(filename, ".png")) {
         decoded = decodePngToBuffer(data, len, outBuffer);
+    } else if (endsWithIgnoreCase(filename, ".webp")) {
+        decoded = decodeWebpToBuffer(data, len, outBuffer);
+    } else if (endsWithIgnoreCase(filename, ".svg")) {
+        decoded = decodeSvgToBuffer(data, len, outBuffer);
     } else {
         Serial.printf("Unsupported image type: %s\n", filename);
         return false;

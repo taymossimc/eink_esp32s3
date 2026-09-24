@@ -3,6 +3,9 @@
     "optic-mcp": {
       "command": "py",
       "args": ["-3.11", "-m", "optic_mcp.server"]
+    },
+    "flux": {
+      "url": "https://app.flux.ai/mcp"
     }
   }
 }

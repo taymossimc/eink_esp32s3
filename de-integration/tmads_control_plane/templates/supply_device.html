@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}{{ supply.device.label or supply.device.device_id }} — Fleet{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <script src="/static/vendor/leaflet/leaflet.js" defer></script>
+  <script src="/static/supply.js" defer></script>
+{% endblock %}
+{% block content %}
+{% set device = supply.device %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow"><a href="/supply">Fleet</a> / Device</p>
+    <h1>{{ device.label }}</h1>
+    <p>{{ device.organization_id }} · {{ device.status }} · <span class="status {{ device.connectivity }}">{{ device.connectivity }}</span> · {{ device.link_mode }}</p>
+    <form class="device-alias device-alias-detail" data-api="/api/v1/supply/devices/{{ device.device_id }}" data-method="PATCH" data-json data-csrf="{{ csrf_token }}" data-redirect="/supply/devices/{{ device.device_id }}">
+      <input name="display_name" value="{{ device.label }}" maxlength="80" required aria-label="Device display name">
+      <button class="secondary" type="submit">Save name</button>
+    </form>
+    <small>{{ device.device_id }}</small>
+    {% if shelf_install_url %}
+    <p class="fine shelf-link">NFC activation URL: <a href="{{ shelf_install_url }}">{{ shelf_install_url }}</a></p>
+    {% endif %}
+  </div>
+  {% if device.movement_warning %}<span class="warning warning-large">Movement warning</span>{% endif %}
+</section>
+<section class="metric-grid">
+  <article><span>Last heartbeat</span><strong class="metric-time">{{ device.last_heartbeat_display or device.last_heartbeat_at or "Never" }}</strong><small>Last seen {{ device.last_seen_display or device.last_seen_at or "—" }}</small></article>
+  <article><span>Battery</span><strong>{{ device.battery_summary or "Not reported" }}</strong><small>{% if device.device_battery and device.device_battery.collected_at %}Reported {{ device.device_battery.collected_at }}{% else %}From the latest device report{% endif %}</small></article>
+  <article><span>Uptime</span><strong class="metric-time">{{ device.uptime_display or "Unavailable" }}</strong><small>Reported by the device at last heartbeat</small></article>
+  <article><span>Current fix</span><strong>{% if device.current_fix and device.current_fix.confidence is defined %}{{ "%.0f"|format(device.current_fix.confidence * 100) }}%{% else %}—{% endif %}</strong><small>{% if device.current_fix %}{{ device.current_fix.observed_at_display or device.current_fix.observed_at }}{% else %}No GNSS fix{% endif %}</small></article>
+  <article><span>Movement alerts</span><strong>{{ device.movement_alert_count }}</strong><small>Confirmed location changes</small></article>
+</section>
+<section class="split supply-detail">
+  <article class="panel" aria-labelledby="device-power-heading">
+    <div class="panel-head"><h2 id="device-power-heading">Power and health</h2>
+      <small>{% if device.status_report %}Report {{ device.status_report.received_at }}{% else %}No status report yet{% endif %}</small></div>
+    {% set battery = device.device_battery %}
+    <dl class="facts">
+      <dt>Battery</dt>
+      <dd>{% if battery and battery.available %}{% if battery.level_percent is not none %}{{ battery.level_percent }}%{% else %}Level unknown{% endif %}{% if battery.charging %} · charging{% elif battery.charging is not none %} · discharging{% endif %}{% elif battery %}Sensor error: {{ battery.error or "unknown" }}{% else %}Not reported{% endif %}</dd>
+      <dt>Voltage / current / power</dt>
+      <dd>{% if battery and battery.available %}{{ "%.2f"|format(battery.voltage_mv / 1000) if battery.voltage_mv is not none else "—" }} V · {{ battery.current_ma if battery.current_ma is not none else "—" }} mA · {{ battery.power_mw if battery.power_mw is not none else "—" }} mW{% else %}—{% endif %}</dd>
+      {% if device.status_report %}
+      <dt>Firmware</dt><dd>{{ device.status_report.software_version or "—" }}</dd>
+      <dt>Wake reason</dt><dd>{{ device.status_report.wake_reason or "—" }}</dd>
+      {% set report_display = device.status_report.display %}
+      <dt>Display</dt>
+      <dd>{% if report_display %}{{ "initialized" if report_display.initialized else "not initialized" }}{% if report_display.last_error %} · error: {{ report_display.last_error }}{% endif %}{% else %}—{% endif %}</dd>
+      <dt>Active asset</dt>
+      <dd>{% if report_display and report_display.active_asset_hash %}<code>{{ report_display.active_asset_hash[:23] }}…</code>{% else %}None{% endif %}</dd>
+      {% set usb = device.status_report.storage.usb if device.status_report.storage else none %}
+      <dt>USB storage</dt>
+      <dd>{% if usb %}{{ "mounted" if usb.mounted else "not mounted" }}{% if usb.free_bytes is defined and usb.free_bytes %} · {{ "%.1f"|format(usb.free_bytes / 1073741824) }} GiB free{% endif %}{% if usb.error %} · {{ usb.error }}{% endif %}{% else %}—{% endif %}</dd>
+      {% endif %}
+      <dt>Next wake</dt><dd>{{ device.next_wake_at or "—" }}</dd>
+    </dl>
+  </article>
+  <article class="panel" aria-labelledby="device-schedule-heading">
+    <div class="panel-head"><h2 id="device-schedule-heading">Wake and display schedule</h2><small>Applied at the device's next check-in</small></div>
+    {% set schedule = device.schedule or {} %}
+    <form class="stack" data-api="/api/v1/supply/devices/{{ device.device_id }}/schedule" data-method="PUT" data-json data-csrf="{{ csrf_token }}" data-redirect="/supply/devices/{{ device.device_id }}">
+      <label>Wake interval (seconds, 300–604800)
+        <input type="number" name="wake_interval_seconds" min="300" max="604800" value="{{ schedule.wake_interval_seconds or 46800 }}" required>
+      </label>
+      <label>Awake timeout (seconds, 60–3600)
+        <input type="number" name="awake_timeout_seconds" min="60" max="3600" value="{{ schedule.awake_timeout_seconds or 300 }}" required>
+      </label>
+      <label>Awake poll interval (seconds, 10–3600)
+        <input type="number" name="awake_poll_seconds" min="10" max="3600" value="{{ schedule.awake_poll_seconds or 30 }}" required>
+      </label>
+      <label>Display orientation
+        <select name="display_orientation">
+          <option value="0" {% if schedule.display_orientation == 0 %}selected{% endif %}>Portrait (0°)</option>
+          <option value="90" {% if schedule.display_orientation == 90 %}selected{% endif %}>Landscape (90°)</option>
+          <option value="180" {% if schedule.display_orientation == 180 %}selected{% endif %}>Portrait inverted (180°)</option>
+          <option value="270" {% if schedule.display_orientation == 270 %}selected{% endif %}>Landscape inverted (270°)</option>
+        </select>
+      </label>
+      <button type="submit">Save schedule</button>
+    </form>
+  </article>
+</section>
+<section class="source-strip">
+{% for name, source in supply.sources.items() %}
+  <span class="source-state {{ source.state }}"><b>{{ name|replace("_"," ") }}</b> {{ source.state }}{% if source.error %}<small>{{ source.error }}</small>{% endif %}</span>
+{% endfor %}
+</section>
+<section class="panel map-panel">
+  <div class="panel-head"><h2>Recent track</h2><small>{{ supply.positions|length }} trusted observations</small></div>
+  <div id="fleet-map" class="fleet-map" data-supply-map data-api="/api/v1/supply/devices/{{ device.device_id|urlencode }}" data-detail="true"{% if carto_basemap_key %} data-carto-key="{{ carto_basemap_key }}"{% endif %} aria-label="Interactive device track map"></div>
+</section>
+<section class="panel cellular-panel" aria-labelledby="cellular-heading">
+  <div class="panel-head">
+    <h2 id="cellular-heading">Cellular</h2>
+    <small>Telemetry {{ device.cellular_telemetry_state }}{% if device.cellular_telemetry and device.cellular_telemetry.collected_at %} · collected {{ device.cellular_telemetry.collected_at }}{% endif %}</small>
+  </div>
+  {% if device.cellular_telemetry %}
+  {% set cellular = device.cellular_telemetry %}
+  <div class="cellular-grid">
+    <div>
+      <h3>Modem and network</h3>
+      <dl class="facts">
+        <dt>ICCID</dt><dd>{{ cellular.iccid or "Unavailable" }}</dd>
+        <dt>IMEI</dt><dd>{{ cellular.imei or "Unavailable" }}</dd>
+        <dt>Operator</dt><dd>{{ cellular.operator_name or "Unavailable" }}</dd>
+        <dt>MCC-MNC</dt><dd>{% if cellular.mcc or cellular.mnc %}{{ cellular.mcc or "—" }}-{{ cellular.mnc or "—" }}{% else %}Unavailable{% endif %}</dd>
+        <dt>Registration</dt><dd>{{ cellular.registration_state|replace("_", " ")|title if cellular.registration_state else "Unavailable" }}</dd>
+        <dt>RSSI</dt><dd>{{ cellular.rssi_dbm ~ " dBm" if cellular.rssi_dbm is not none else "Unavailable" }}</dd>
+        <dt>Interface</dt><dd>{{ cellular.lte_interface or "Unavailable" }}</dd>
+      </dl>
+    </div>
+    <div>
+      <h3>Data usage</h3>
+      {% for period, label in (("last_interval", "Last interval"), ("last_24_hours", "Last 24 hours"), ("lifetime", "Lifetime")) %}
+      {% set usage = device.cellular_usage_display[period] %}
+      <div class="usage-row">
+        <strong>{{ label }}</strong>
+        {% if usage and (usage.rx_bytes or usage.tx_bytes or usage.total_bytes) %}
+        <span>RX {{ usage.rx_bytes or "Unavailable" }} · TX {{ usage.tx_bytes or "Unavailable" }} · Total {{ usage.total_bytes or "Unavailable" }}</span>
+        {% else %}
+        <span>Usage unavailable</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">No cellular telemetry has been reported by this device.</div>
+  {% endif %}
+  <div class="cellular-history">
+    <h3>Recent intervals</h3>
+    {% if supply.cellular_usage_history %}
+    <div class="device-table-wrap"><table class="device-table usage-table">
+      <caption>Recent cellular data usage intervals, newest first</caption>
+      <thead><tr><th>Interval</th><th>Received</th><th>RX</th><th>TX</th><th>Total</th></tr></thead>
+      <tbody>{% for item in supply.cellular_usage_history %}<tr>
+        <td>{{ item.interval_started_at or "Unavailable" }}</td>
+        <td>{{ item.collected_at or "Unavailable" }}</td>
+        <td>{{ item.display.rx_bytes or "Unavailable" }}</td>
+        <td>{{ item.display.tx_bytes or "Unavailable" }}</td>
+        <td>{{ item.display.total_bytes or "Unavailable" }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% elif supply.sources.cellular_usage.state == "error" %}
+    <div class="empty">Recent cellular usage history is unavailable from the fleet service.</div>
+    {% else %}
+    <div class="empty">No cellular usage intervals have been recorded.</div>
+    {% endif %}
+  </div>
+</section>
+<section class="split supply-detail">
+  <article class="panel"><div class="panel-head"><h2>Revenue</h2><small>{{ supply.period_start }} — {{ supply.period_end }}</small></div>
+    {% for currency, amount in device.revenue.currencies.items() %}
+    <div class="revenue-row"><div><span>Selected period</span><strong>{{ currency }} {{ "%.2f"|format(amount.period_revenue_minor / 100) }}</strong></div><div><span>Lifetime</span><strong>{{ currency }} {{ "%.2f"|format(amount.lifetime_revenue_minor / 100) }}</strong></div></div>
+    {% else %}<div class="empty">No posted revenue for this device.</div>{% endfor %}
+  </article>
+  <article class="panel"><div class="panel-head"><h2>Identity and sync</h2></div>
+    <dl class="facts"><dt>Runtime key ID</dt><dd>{{ device.runtime_key_id or "—" }}</dd><dt>Certificate ID</dt><dd>{{ device.certificate_id or "—" }}</dd><dt>Last cursor</dt><dd>{{ device.last_ack_cursor or "—" }}</dd><dt>Enrolled</dt><dd>{{ device.enrolled_at or "—" }}</dd></dl>
+  </article>
+</section>
+<section class="split supply-detail">
+  <article class="panel"><div class="panel-head"><h2>Sync history</h2></div>
+  {% for item in supply.sync_history %}<div class="timeline"><i></i><div><strong>Cursor {{ item.cursor }}</strong><small>{{ item.received_at }}</small></div></div>{% else %}<div class="empty">No sync acknowledgements recorded.</div>{% endfor %}</article>
+  <article class="panel"><div class="panel-head"><h2>Movement alerts</h2></div>
+  {% for alert in supply.movement_alerts %}<div class="timeline movement"><i></i><div><strong>{{ "%.0f"|format(alert.distance_meters) }} metre change</strong><small>{{ alert.confirmed_at }} · {{ alert.from_latitude }}, {{ alert.from_longitude }} → {{ alert.to_latitude }}, {{ alert.to_longitude }}</small></div></div>{% else %}<div class="empty">No confirmed movement alerts.</div>{% endfor %}</article>
+</section>
+{% endblock %}

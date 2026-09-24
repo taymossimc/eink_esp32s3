@@ -137,14 +137,11 @@ parameter:
 ******************************************************************************/
 static void EPD_13IN3E_Reset(void)
 {
-    // Generous timing (matches Pimoroni driver): needed to reliably wake the
-    // panel from deep sleep, not just from a cold power-on.
-    DEV_Digital_Write(EPD_RST_PIN, 1);
-    DEV_Delay_ms(50);
     DEV_Digital_Write(EPD_RST_PIN, 0);
-    DEV_Delay_ms(100);
+    DEV_Delay_ms(30);
     DEV_Digital_Write(EPD_RST_PIN, 1);
-    DEV_Delay_ms(200);
+    DEV_Delay_ms(30);
+    DEV_Delay_ms(300);
 }
 
 /******************************************************************************
@@ -217,8 +214,12 @@ static bool EPD_13IN3E_WaitRefreshComplete(void)
 {
     const uint32_t start = millis();
     while (!DEV_Digital_Read(EPD_BUSY_PIN)) {
-        if (millis() - start > 65000) {
-            Serial.println("ERROR: display refresh timed out after 65 seconds");
+        // Spectra 6 full-color refreshes are normally much faster, but cold
+        // panels and a recently power-cycled controller can remain BUSY for
+        // well over a minute. Do not classify a legitimate slow refresh as a
+        // failure (and then issue another DRF) while BUSY is still asserted.
+        if (millis() - start > 180000) {
+            Serial.println("ERROR: display refresh timed out after 180 seconds");
             return false;
         }
         DEV_Delay_ms(100);
@@ -239,11 +240,7 @@ bool EPD_13IN3E_TurnOnDisplay(void)
     EPD_13IN3E_CS_ALL(0);
     EPD_13IN3E_SPI_Sand(PON, NULL, 0); // POWER_ON with 300ms DC setup delay
     EPD_13IN3E_CS_ALL(1);
-    if (!EPD_13IN3E_ReadBusyH()) {
-        return false;
-    }
-
-    DEV_Delay_ms(200);
+    DEV_Delay_ms(300);
     printf("Write DRF \r\n");
     EPD_13IN3E_CS_ALL(0);
     EPD_13IN3E_SPI_Sand(DRF, DRF_V, sizeof(DRF_V));

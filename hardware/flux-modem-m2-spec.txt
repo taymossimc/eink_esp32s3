@@ -1,0 +1,71 @@
+# Flux schematic — SIM7600 M.2 modem + external SIM (replaces J6 dongle)
+
+Module: DFRobot TEL0158 / SIM7600G-H-M2 (M.2 B-KEY, 42×31.4 mm)
+NOT Mini-PCIe — use M.2 B-key WWAN socket (67-position card edge).
+Datasheet: documentation/SIM7600/TEL0158_sim7600g-h-m2-4g-communication-module_datasheet_V1.0.pdf
+SIMCom HW ref: SIM7600G_SIM7600G-H_Hardware Design V1.00
+
+## Remove
+- J6 (1×4 bench USB-dongle header) — delete or repurpose
+
+## Add
+
+### J9 — M.2 B-key socket (replace J6 function)
+- Accepts TEL0158 module; antennas are on-module IPEX4 (layout: keep edge clearance, no traces)
+- PERIPH_5V_SW feeds modem buck input (same switched rail as display)
+
+### J10 — Nano SIM socket (6-pin push-push, e.g. Amphenol C707 10M006 512 class)
+- C1 → MODEM_USIM_VDD
+- C2 → MODEM_USIM_RST
+- C3 → MODEM_USIM_CLK
+- C5 → GND
+- C6 → NC
+- C7 → MODEM_USIM_DATA
+- ESD protection on all USIM lines per SIMCom §3.8
+
+Wire J10 to J9 M.2 USIM pins (module pins 17–20 via M.2 mapping).
+
+### U_modem — Buck regulator PERIPH_5V_SW (~5.3 V) → MODEM_VBAT 3.8 V
+- VBAT range 3.4–4.2 V; target 3.8 V nominal
+- Peak ≥ 2 A (GSM burst per SIMCom Table 6)
+- Bulk: ≥470 µF low-ESR + 100 nF at J9 VBAT pins (SIMCom recommends 300 µF–1000 µF)
+
+### U_level — UART level shifter 1.8 V (module) ↔ 3.3 V (ESP32)
+- SIM7600 UART is 1.8 V (SIMCom §3.3); ESP32 GPIO10/11 are 3.3 V
+- Use TXB0108 (2+ channels) or equivalent auto-directional shifter
+- VCCA 1.8 V from module VDD_1V8 (M.2 pin 15) or local LDO from MODEM_VBAT
+- VCCB 3.3 V from UPS_3V3
+
+### UART (crossed, unchanged firmware nets)
+- MODEM_TX (ESP GPIO10, J1:16) → level shifter B→A → module RXD (pad 68)
+- MODEM_RX (ESP GPIO11, J1:17) ← level shifter A←B ← module TXD (pad 71)
+- RTS/CTS/DTR: NC unless needed later
+
+### Power control
+- PWRKEY (pad 3): auto-power via 0 Ω to GND per SIMCom (or 100 nF + ESD to GND)
+- RESET (pad 4): NC (internal 40 kΩ pull-up to 1.8 V)
+- FLIGHTMODE (pad 54): NC or pull-up (normal mode)
+- USIM_DET (pad 53): NC if socket has mechanical detect unused
+
+### Ground
+- Common GND: J9, J10, buck, level shifter, ESP
+
+## Nets (keep existing names where possible)
+- MODEM_TX, MODEM_RX → through U_level to J9
+- PERIPH_5V_SW → U_modem VIN, J9 optional USB_VBUS NC
+- MODEM_VBAT (new) → J9 VBAT pins 38,39,62,63
+- MODEM_USIM_* (new) → J10 ↔ J9
+- GND, UPS_3V3 unchanged
+
+## Firmware (no change required)
+- modem_config.h: MODEM_TX=10, MODEM_RX=11, 115200 8N1
+- POWER_ENABLE_GPIO=4 switches PERIPH_5V_SW which feeds modem buck
+
+## PCB layout constraints (after schematic ERC clean)
+- **LOCKED:** H1–H4 (58×49 mm) and J8 relative positions — DO NOT move
+- J8: bottom layer, Pin_1 lower-right top view (current rotation)
+- J4 (NFC mikroBUS): place at **board edge** for tap access
+- J1/J1B: preserve 25.40 mm row spacing; leave USB-C clearance on Freenove side
+  (USB ports sit between J1 pin01=5V and J1B pin01=GND region)
+- J9 M.2 socket: place for module insertion; keep IPEX antenna clearance at board edge
+- J10 SIM: accessible edge, short traces to J9 USIM nets

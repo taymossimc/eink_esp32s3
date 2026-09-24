@@ -95,7 +95,7 @@ function:
 
 void DEV_SPI_WriteByte(UBYTE data)
 {
-    SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+    SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
     SPI.transfer(data);
     SPI.endTransaction();
 
@@ -103,7 +103,7 @@ void DEV_SPI_WriteByte(UBYTE data)
 
 UBYTE DEV_SPI_ReadByte()
 {
-    SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+    SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
     uint8_t val = SPI.transfer(0x00);
     SPI.endTransaction();
     return val;
@@ -111,7 +111,7 @@ UBYTE DEV_SPI_ReadByte()
 
 void DEV_SPI_Write_nByte(UBYTE *pData, UDOUBLE len)
 {
-    SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+    SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
     for (UDOUBLE i = 0; i < len; i++) {
         SPI.transfer(pData[i]);
     }

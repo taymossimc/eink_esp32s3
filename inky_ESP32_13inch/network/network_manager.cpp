@@ -10,10 +10,12 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <string.h>
+#include <time.h>
 
 namespace {
 
 bool gStarted = false;
+bool gTimeSynced = false;
 SemaphoreHandle_t gNetworkMutex = nullptr;
 
 class NetworkLock {
@@ -39,6 +41,21 @@ const device_config::WifiProfile *findProfile(
     return nullptr;
 }
 
+void syncNetworkTime() {
+    if (gTimeSynced || WiFi.status() != WL_CONNECTED) return;
+    if (time(nullptr) >= 1700000000) {
+        gTimeSynced = true;
+        return;
+    }
+    configTime(0, 0, "time.cloudflare.com", "pool.ntp.org");
+    const uint32_t started = millis();
+    while (time(nullptr) < 1700000000 && millis() - started < 10000) {
+        delay(100);
+    }
+    gTimeSynced = time(nullptr) >= 1700000000;
+    Serial.printf("WiFi: clock sync %s\n", gTimeSynced ? "ok" : "timed out");
+}
+
 }  // namespace
 
 bool networkManagerBegin() {
@@ -61,6 +78,7 @@ bool networkConnectSaved(uint32_t timeoutMs) {
     }
     if (WiFi.status() == WL_CONNECTED &&
         findProfile(config, WiFi.SSID())) {
+        syncNetworkTime();
         return true;
     }
 
@@ -96,6 +114,7 @@ bool networkConnectSaved(uint32_t timeoutMs) {
     Serial.printf("WiFi: connected %s, IP=%s RSSI=%ld\n",
                   WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(),
                   static_cast<long>(WiFi.RSSI()));
+    syncNetworkTime();
     return true;
 }
 
@@ -147,6 +166,95 @@ size_t networkScan(WifiNetworkInfo *results, size_t capacity) {
     }
     WiFi.scanDelete();
     return count;
+}
+
+bool networkWifiHttpsRequest(
+    const char *host, const char *requestPath, const char *method,
+    const uint8_t *body, size_t bodyLen, const char *timestamp,
+    const char *nonce, const char *signature, uint8_t **bodyOut,
+    size_t *lenOut, size_t maxBytes, int *statusOut) {
+    NetworkLock lock;
+    if (!host || !requestPath || !method || !bodyOut || !lenOut || !maxBytes) {
+        return false;
+    }
+    *bodyOut = nullptr;
+    *lenOut = 0;
+    if (statusOut) *statusOut = 0;
+    if (!networkWifiConnected() && !networkConnectSaved()) return false;
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(30);
+    HttpClient http(client, host, 443);
+    http.setTimeout(120000);
+    http.connectionKeepAlive();
+    http.beginRequest();
+    const int rc = http.startRequest(requestPath, method);
+    if (rc != 0) {
+        http.stop();
+        return false;
+    }
+    if (timestamp && timestamp[0]) http.sendHeader("X-TMAds-Timestamp", timestamp);
+    if (nonce && nonce[0]) http.sendHeader("X-TMAds-Nonce", nonce);
+    if (signature && signature[0]) http.sendHeader("X-TMAds-Signature", signature);
+    if (body && bodyLen) {
+        http.sendHeader("Content-Type", "application/json");
+        http.sendHeader("Content-Length", static_cast<int>(bodyLen));
+        http.beginBody();
+        if (http.write(body, bodyLen) != bodyLen) {
+            http.stop();
+            return false;
+        }
+    }
+    http.endRequest();
+    const int status = http.responseStatusCode();
+    if (statusOut) *statusOut = status;
+    if (status < 200 || status >= 300) {
+        const String detail = http.responseBody();
+        Serial.printf("WiFi HTTPS %s: HTTP %d %s\n", method, status,
+                      detail.c_str());
+        http.stop();
+        return false;
+    }
+    const int declared = http.contentLength();
+    if (declared > 0 && static_cast<size_t>(declared) > maxBytes) {
+        http.stop();
+        return false;
+    }
+    uint8_t *buffer = static_cast<uint8_t *>(
+        heap_caps_malloc(maxBytes, MALLOC_CAP_SPIRAM));
+    if (!buffer) buffer = static_cast<uint8_t *>(malloc(maxBytes));
+    if (!buffer) {
+        http.stop();
+        return false;
+    }
+    size_t total = 0;
+    uint32_t lastData = millis();
+    while ((declared < 0 || total < static_cast<size_t>(declared)) &&
+           total < maxBytes) {
+        const size_t available = http.available();
+        if (available) {
+            const size_t request =
+                min(available, min(static_cast<size_t>(8192), maxBytes - total));
+            const int got = http.readBytes(buffer + total, request);
+            if (got > 0) {
+                total += static_cast<size_t>(got);
+                lastData = millis();
+            }
+        } else if (!http.connected() || millis() - lastData > 30000) {
+            break;
+        } else {
+            delay(10);
+        }
+    }
+    http.stop();
+    if (!total || (declared >= 0 && total != static_cast<size_t>(declared))) {
+        heap_caps_free(buffer);
+        return false;
+    }
+    *bodyOut = buffer;
+    *lenOut = total;
+    return true;
 }
 
 bool networkWifiHttpsGet(const char *host, const char *path,

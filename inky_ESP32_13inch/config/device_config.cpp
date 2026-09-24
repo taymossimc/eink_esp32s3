@@ -208,6 +208,26 @@ bool equalsIgnoreCase(const char *text, const char *expected) {
   return *text == '\0' && *expected == '\0';
 }
 
+bool hasEnabledWifiProfile(const DeviceConfig &config) {
+  for (size_t i = 0; i < kMaxWifiProfiles; ++i) {
+    if (config.wifiProfiles[i].enabled &&
+        config.wifiProfiles[i].ssid[0] != '\0') {
+      return true;
+    }
+  }
+  return false;
+}
+
+void seedFactoryWifiProfiles(DeviceConfig &config) {
+  config.wifiProfiles[0].enabled = true;
+  copyText(config.wifiProfiles[0].ssid, "Moss3");
+  copyText(config.wifiProfiles[0].password, "Tayisareallygreatguy");
+
+  config.wifiProfiles[1].enabled = true;
+  copyText(config.wifiProfiles[1].ssid, "GRM119");
+  copyText(config.wifiProfiles[1].password, "BOOO000ooom");
+}
+
 }  // namespace
 
 DeviceConfig defaults() {
@@ -219,6 +239,7 @@ DeviceConfig defaults() {
   config.cellularPdp = PdpType::IPv4;
   config.roamingAllowed = false;
   config.displayOrientation = DisplayOrientation::Portrait;
+  seedFactoryWifiProfiles(config);
   return config;
 }
 
@@ -316,10 +337,17 @@ bool load() {
                 sizeof(blob.payload));
   if (!crcValid) {
     cachedConfig() = loaded;
+    writePersistent(loaded);
     return false;
   }
 
-  cachedConfig() = fromPersistent(blob.payload);
+  loaded = fromPersistent(blob.payload);
+  if (!hasEnabledWifiProfile(loaded)) {
+    seedFactoryWifiProfiles(loaded);
+    sanitize(loaded);
+    writePersistent(loaded);
+  }
+  cachedConfig() = loaded;
   return true;
 }
 

@@ -54,7 +54,7 @@ extern int EPD_MOSI_PIN;
 extern int EPD_CS_M_PIN;
 extern int EPD_CS_S_PIN;
 #define EPD_MISO_PIN    -1  // The e-paper interface is write-only
-#define EPD_DC_PIN      5   // moved off GPIO16 (camera connector pin)
+#define EPD_DC_PIN      12  // alternate D/C output for panel diagnostics
 #define EPD_RST_PIN     17
 #define EPD_BUSY_PIN    18
 

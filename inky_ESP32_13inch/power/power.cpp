@@ -7,6 +7,7 @@ namespace {
 
 bool gRailOn = false;
 uint32_t gLastActivityMs = 0;
+uint32_t gTimeoutMs = IDLE_SLEEP_MS;
 
 }  // namespace
 
@@ -36,7 +37,16 @@ uint32_t activityIdleMs() {
 }
 
 bool activityTimedOut() {
-    return activityIdleMs() >= IDLE_SLEEP_MS;
+    return activityIdleMs() >= gTimeoutMs;
+}
+
+void activitySetTimeoutMs(uint32_t timeoutMs) {
+    if (timeoutMs < 60000UL) timeoutMs = 60000UL;
+    gTimeoutMs = timeoutMs;
+}
+
+uint32_t activityTimeoutMs() {
+    return gTimeoutMs;
 }
 
 void displayPinsSafe() {

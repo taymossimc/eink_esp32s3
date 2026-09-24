@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Audit history — TMAds{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Append-only accountability</p><h1>Audit history</h1><p>Security-sensitive actions and publication events within your organizations.</p></div></section>
+<section class="panel">{% for event in events %}<div class="audit-row"><time>{{ event.created_at }}</time><div><strong>{{ event.action }}</strong><small>{{ event.object_type }} · {{ event.object_id }}</small></div><code>{{ event.detail_json }}</code></div>{% else %}<div class="empty">No recorded events.</div>{% endfor %}</section>
+{% endblock %}

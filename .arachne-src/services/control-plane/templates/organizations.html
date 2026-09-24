@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Organizations — TMAds{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Advertiser workspaces</p><h1>Organizations</h1><p>Membership and financial data are isolated by organization.</p></div></section>
+<section class="split">
+  <article class="panel"><h2>Your organizations</h2>
+  {% for org in organizations %}<a class="row-link" href="/organizations/{{ org.id }}"><div><strong>{{ org.name }}</strong><small>{{ org.kind|title }} · {{ org.role|replace("_"," ")|title }}</small></div><span>Manage →</span></a>{% else %}<div class="empty">No organizations yet.</div>{% endfor %}</article>
+  <article class="panel"><h2>Create advertiser organization</h2>
+    <form data-api="/api/v1/organizations" data-method="POST" data-json data-csrf="{{ csrf_token }}" data-redirect="/organizations">
+      <label>Organization name <input name="name" value="Demo Advertiser" required minlength="2"></label>
+      <button>Create organization</button>
+    </form>
+  </article>
+</section>
+{% if invitations %}<section class="panel"><h2>Pending invitations</h2>
+  {% for invitation in invitations %}<div class="journal"><div><strong>{{ invitation.organization_name }}</strong><small>{{ invitation.invitee_name or "Name pending" }} · {{ invitation.role|replace("_"," ")|title }} · expires {{ invitation.expires_at }}</small></div><span class="status draft">TOKEN REQUIRED</span></div>{% endfor %}
+  <form data-invitation-accept data-csrf="{{ csrf_token }}"><label>One-time invitation token <input name="token" required autocomplete="off"></label><button>Accept invitation</button></form>
+</section>{% endif %}
+{% endblock %}

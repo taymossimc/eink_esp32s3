@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Digital Engine — Context-aware advertising{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-copy">
+    <div class="signal-mark" aria-hidden="true"><span>DE</span></div>
+    <p class="eyebrow">Digital Engine advertising, accountable by design</p>
+    <h1>Buy attention with transparent, deterministic contracts.</h1>
+    <p class="lede">Build context-aware campaigns, publish signed bids, and follow every prepaid campaign dollar through an immutable journal.</p>
+    <div class="trust-row"><span>RFC 8785</span><span>Ed25519</span><span>Privacy-first QFV</span></div>
+  </div>
+  <aside class="login-card">
+    <p class="eyebrow">Secure sign in</p>
+    <h2>Continue with SMS</h2>
+    {% if demo_otp %}<div class="notice amber"><strong>Demo OTP enabled.</strong> The one-time code is shown only because the operator explicitly enabled demo mode.</div>{% endif %}
+    <form id="otp-start" data-login-start>
+      <label>Mobile number <input name="phone" type="tel" placeholder="1 416 555 0123" required autocomplete="tel"></label>
+      <button>Send one-time code</button>
+    </form>
+    <form id="otp-verify" data-login-verify hidden>
+      <input name="challenge_id" type="hidden">
+      <label>Six-digit code <input name="code" inputmode="numeric" pattern="[0-9]{6}" required autocomplete="one-time-code"></label>
+      <p class="demo-code" data-demo-code></p>
+      <button>Verify and continue</button>
+    </form>
+    <p class="fine">Include the country code; a leading + is added if you omit it. Codes expire quickly. Requests and failed attempts are rate-limited.</p>
+  </aside>
+</section>
+{% endblock %}

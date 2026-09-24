@@ -12,6 +12,13 @@
 #define NFC_INT 21
 #endif
 
+#ifndef NFC_SHELF_URL
+#define NFC_SHELF_URL                                                        \
+    "https://digitalengine.leporia.net/shelf/"                              \
+    "dG1hZHMtZWluay1hNGNiOGZkZDkxMjB8MTgyMTUxMjEwMnwzYzFmMDFkNDBhYjQ0"     \
+    "MmEwZTMyMzVjMjdjOTQyMGIxMjExNzk5MTUxOGE2MmRjMDkxMDI0YWNhOGM0ZjY4OGNj"
+#endif
+
 // High-side 5 V enable: HIGH = rail ON (display + modem).
 #ifndef POWER_ENABLE_GPIO
 #define POWER_ENABLE_GPIO 4

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Campaigns — TMAds{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Brokerage</p><h1>Campaigns</h1><p>Creative, budget, bids, and immutable publication history.</p></div></section>
+<section class="split">
+  <article class="panel"><h2>All campaigns</h2>{% for c in campaigns %}<a class="row-link" href="/campaigns/{{ c.id }}"><div><strong>{{ c.name }}</strong><small>${{ "%.2f"|format(c.budget_cap_minor/100) }} cap · {{ c.currency }}</small></div><span class="status {{ c.status|lower }}">{{ c.status }}</span></a>{% else %}<div class="empty">No campaigns yet.</div>{% endfor %}</article>
+  <article class="panel"><h2>New campaign</h2>
+  {% if organizations %}
+  <form data-api="/api/v1/campaigns" data-method="POST" data-json data-csrf="{{ csrf_token }}" data-result-redirect="/campaigns/{id}">
+    <label>Organization <select name="organization_id">{% for org in organizations %}<option value="{{ org.id }}">{{ org.name }}</option>{% endfor %}</select></label>
+    <label>Name <input name="name" value="Toronto Launch" required></label>
+    <label>Description <textarea name="description">Two-hour context-aware Toronto campaign.</textarea></label>
+    <label>Budget cap, cents <input name="budget_cap_minor" type="number" value="10000" min="100"></label>
+    <div class="field-pair"><label>Starts <input name="start_at" type="datetime-local" required></label><label>Ends <input name="end_at" type="datetime-local" required></label></div>
+    <button>Create campaign</button>
+  </form>{% else %}<div class="empty">Create an organization first.</div>{% endif %}
+  </article>
+</section>
+{% endblock %}

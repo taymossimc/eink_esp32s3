@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ organization.name }} — TMAds{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Organization</p><h1>{{ organization.name }}</h1><p>Your role: {{ membership.role|replace("_"," ")|title }}</p></div><div class="actions"><a class="button secondary" href="/organizations/{{ organization.id }}/reports">Performance &amp; Settlements</a><a class="button secondary" href="/organizations/{{ organization.id }}/wallet">Campaign Funds</a></div></section>
+<section class="split">
+  <article class="panel"><div class="panel-head"><h2>Members</h2><span>{{ members|length }}</span></div>
+    {% for member in members %}<div class="journal"><div><strong>{{ member.display_name or "Name not set" }}</strong><small>{{ member.phone_e164 }} · {{ member.role|replace("_"," ")|title }}</small></div>
+      {% if membership.role in ["owner","admin"] %}<div class="actions"><form data-api="/api/v1/organizations/{{ organization.id }}/members/{{ member.user_id }}" data-method="PATCH" data-json data-csrf="{{ csrf_token }}" data-redirect="/organizations/{{ organization.id }}"><input name="display_name" value="{{ member.display_name or '' }}" placeholder="Full name" required maxlength="120"><select name="role">{% for role in ["owner","admin","campaign_manager","billing_manager","analyst","viewer"] %}<option value="{{ role }}" {% if role==member.role %}selected{% endif %}>{{ role|replace("_"," ")|title }}</option>{% endfor %}</select><button class="secondary">Update</button></form><form data-api="/api/v1/organizations/{{ organization.id }}/members/{{ member.user_id }}" data-method="DELETE" data-json data-csrf="{{ csrf_token }}" data-redirect="/organizations/{{ organization.id }}"><button class="danger">Remove</button></form></div>{% endif %}
+    </div>{% endfor %}
+  </article>
+  {% if membership.role in ["owner","admin"] %}<article class="panel"><h2>Invite by phone</h2><p class="fine">TMAds sends a one-time sign-in link by SMS. Failed deliveries can be resent from the list below.</p>
+    <form data-api="/api/v1/organizations/{{ organization.id }}/members/invite" data-method="POST" data-json data-csrf="{{ csrf_token }}" data-redirect="/organizations/{{ organization.id }}"><label>Full name <input name="display_name" required maxlength="120" autocomplete="name"></label><label>Mobile number <input name="phone" type="tel" placeholder="14165550123" required autocomplete="tel"></label><label>Role <select name="role">{% for role in ["owner","admin","campaign_manager","billing_manager","analyst","viewer"] %}<option value="{{ role }}">{{ role|replace("_"," ")|title }}</option>{% endfor %}</select></label><button>Send invitation SMS</button></form>
+    {% if pending_invites %}
+    <h3>Pending invitations</h3>
+    {% for invitation in pending_invites %}
+    <div class="journal">
+      <div>
+        <strong>{{ invitation.invitee_name or "Name pending" }}</strong>
+        <small>{{ invitation.phone_e164 }} · {{ invitation.role|replace("_"," ")|title }} · {{ invitation.delivery_status or "PENDING" }}{% if invitation.delivery_error %} · {{ invitation.delivery_error }}{% endif %}</small>
+      </div>
+      <form data-api="/api/v1/organizations/{{ organization.id }}/invitations/{{ invitation.id }}/retry" data-method="POST" data-json data-csrf="{{ csrf_token }}" data-redirect="/organizations/{{ organization.id }}"><button class="secondary">Resend SMS</button></form>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </article>{% endif %}
+</section>
+{% endblock %}

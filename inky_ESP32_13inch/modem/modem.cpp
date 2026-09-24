@@ -354,6 +354,8 @@ bool parseCgnssInfo(const String &info, float *lat, float *lon, float *alt,
     char lonHem = 'E';
     float altitude = 0;
     int gpsSats = 0;
+    String dateToken;
+    String timeToken;
 
     int start = 0;
     while (start <= payload.length()) {
@@ -383,6 +385,12 @@ bool parseCgnssInfo(const String &info, float *lat, float *lon, float *alt,
                 if (token.length() > 0) {
                     lonHem = token.charAt(0);
                 }
+                break;
+            case 8:
+                dateToken = token;
+                break;
+            case 9:
+                timeToken = token;
                 break;
             case 10:
                 altitude = token.toFloat();
@@ -416,6 +424,17 @@ bool parseCgnssInfo(const String &info, float *lat, float *lon, float *alt,
     }
     if (vsat) {
         *vsat = gpsSats;
+    }
+    if (dateToken.length() >= 6 && timeToken.length() >= 6) {
+        const int day = dateToken.substring(0, 2).toInt();
+        const int month = dateToken.substring(2, 4).toInt();
+        const int year = 2000 + dateToken.substring(4, 6).toInt();
+        const int hour = timeToken.substring(0, 2).toInt();
+        const int minute = timeToken.substring(2, 4).toInt();
+        const int second = timeToken.substring(4, 6).toInt();
+        snprintf(gDiagnostics.gnssUtc, sizeof(gDiagnostics.gnssUtc),
+                 "%04d-%02d-%02dT%02d:%02d:%02dZ", year, month, day, hour,
+                 minute, second);
     }
     return true;
 }
@@ -829,6 +848,79 @@ static bool readHttpBody(HttpClient &http, int contentLength, uint8_t *buffer,
     }
 
     return *outLen > 0;
+}
+
+bool modemHttpsRequest(
+    const char *host, const char *requestPath, const char *method,
+    const uint8_t *body, size_t bodyLen, const char *timestamp,
+    const char *nonce, const char *signature, uint8_t **bodyOut,
+    size_t *lenOut, size_t maxBytes, int *statusOut) {
+    if (!host || !requestPath || !method || !bodyOut || !lenOut || !maxBytes) {
+        return false;
+    }
+    *bodyOut = nullptr;
+    *lenOut = 0;
+    if (statusOut) *statusOut = 0;
+    if (!modemEnsureDataConnected()) {
+        Serial.println("TMAds cellular: data not connected");
+        return false;
+    }
+
+    SSLClient secureClient(&gsmClient);
+    secureClient.setInsecure();
+    HttpClient http(secureClient, host, 443);
+    http.setTimeout(120000);
+    http.connectionKeepAlive();
+    http.beginRequest();
+    const int rc = http.startRequest(requestPath, method);
+    if (rc != 0) {
+        Serial.printf("TMAds cellular request failed: %d\n", rc);
+        http.stop();
+        return false;
+    }
+    if (timestamp && timestamp[0]) http.sendHeader("X-TMAds-Timestamp", timestamp);
+    if (nonce && nonce[0]) http.sendHeader("X-TMAds-Nonce", nonce);
+    if (signature && signature[0]) http.sendHeader("X-TMAds-Signature", signature);
+    if (body && bodyLen) {
+        http.sendHeader("Content-Type", "application/json");
+        http.sendHeader("Content-Length", static_cast<int>(bodyLen));
+        http.beginBody();
+        if (http.write(body, bodyLen) != bodyLen) {
+            http.stop();
+            return false;
+        }
+    }
+    http.endRequest();
+
+    const int status = http.responseStatusCode();
+    if (statusOut) *statusOut = status;
+    if (status < 200 || status >= 300) {
+        Serial.printf("TMAds cellular HTTPS %s: HTTP %d\n", method, status);
+        http.stop();
+        return false;
+    }
+    const int contentLength = http.contentLength();
+    if (contentLength > 0 && static_cast<size_t>(contentLength) > maxBytes) {
+        http.stop();
+        return false;
+    }
+    uint8_t *buffer = static_cast<uint8_t *>(
+        heap_caps_malloc(maxBytes, MALLOC_CAP_SPIRAM));
+    if (!buffer) buffer = static_cast<uint8_t *>(malloc(maxBytes));
+    if (!buffer) {
+        http.stop();
+        return false;
+    }
+    const bool readOk =
+        readHttpBody(http, contentLength, buffer, maxBytes, lenOut);
+    http.stop();
+    if (!readOk) {
+        heap_caps_free(buffer);
+        *lenOut = 0;
+        return false;
+    }
+    *bodyOut = buffer;
+    return true;
 }
 
 bool modemHttpsGet(const char *host, const char *path,

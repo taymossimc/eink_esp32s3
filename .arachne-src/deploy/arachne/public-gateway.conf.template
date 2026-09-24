@@ -1,0 +1,134 @@
+worker_processes auto;
+pid /tmp/nginx.pid;
+error_log /dev/stderr notice;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    access_log /dev/stdout;
+    server_tokens off;
+
+    client_body_temp_path /tmp/client_body;
+    proxy_temp_path /tmp/proxy;
+    fastcgi_temp_path /tmp/fastcgi;
+    uwsgi_temp_path /tmp/uwsgi;
+    scgi_temp_path /tmp/scgi;
+
+    resolver 127.0.0.11 valid=30s ipv6=off;
+
+    upstream control_plane {
+        zone control_plane 64k;
+        server control-plane:8000 resolve;
+    }
+
+    upstream edge_distributor {
+        zone edge_distributor 64k;
+        server edge-distributor:8080 resolve;
+    }
+
+    map $http_x_forwarded_proto $forwarded_proto {
+        default $scheme;
+        ~*^https$ https;
+        ~*^http$ http;
+    }
+
+    # Reject raw traversal, duplicate separators, backslashes, and all encoded
+    # path bytes before nginx's normalized URI can select another location.
+    map $request_uri $unsafe_device_request {
+        default 0;
+        "~*^/device[^?]*(/\.{1,2}(/|\?|$)|//|%|\\\\)" 1;
+        "~*^/(?=[^/?]*%)(d|%64)(e|%65)(v|%76)(i|%69)(c|%63)(e|%65)(/|%2f|%5c)" 1;
+    }
+
+    # Method and normalized-path allowlist for the edge distributor's public API.
+    map "$request_method:$uri" $device_route_allowed {
+        default 0;
+        "GET:/device/.well-known/tmads-edge-key" 1;
+        "POST:/device/api/v1/devices/register" 1;
+        "POST:/device/api/v1/devices/enroll" 1;
+        "~^POST:/device/api/v1/devices/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/heartbeat$" 1;
+        "~^POST:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/hello$" 1;
+        "~^GET:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/media-rendered/sha256:[0-9a-f]{64}$" 1;
+        "~^GET:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/firmware/sha256:[0-9a-f]{64}$" 1;
+        "~^POST:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/check-in$" 1;
+        "~^GET:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/manifest$" 1;
+        "~^GET:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/delta$" 1;
+        "~^GET:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/media/sha256:[0-9a-f]{64}$" 1;
+        "~^POST:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/sync/ack$" 1;
+        "~^POST:/device/api/v1/edge/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}/receipts/batch$" 1;
+    }
+
+    server {
+        listen 8080;
+        server_name _;
+
+        set_real_ip_from ${PUBLIC_GATEWAY_TRUSTED_PROXY_CIDR};
+        real_ip_header X-Forwarded-For;
+        real_ip_recursive on;
+
+        client_max_body_size 55m;
+        client_body_timeout 30s;
+        send_timeout 60s;
+        keepalive_timeout 30s;
+
+        if ($unsafe_device_request) {
+            return 400;
+        }
+
+        location = /device {
+            return 404;
+        }
+
+        location /device/ {
+            client_max_body_size 4m;
+
+            if ($device_route_allowed = 0) {
+                return 404;
+            }
+
+            rewrite ^/device(/.*)$ $1 break;
+            proxy_pass http://edge_distributor;
+            proxy_http_version 1.1;
+            proxy_set_header Host edge-distributor;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Range $http_range;
+            proxy_set_header If-Range $http_if_range;
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 300s;
+            proxy_request_buffering on;
+            proxy_buffering off;
+        }
+
+        # Read-only ad carousel: JSON directory index plus direct image URLs.
+        location = /ad_carousel {
+            rewrite ^ /ad_carousel/ last;
+        }
+
+        location ^~ /ad_carousel/ {
+            alias /var/www/ad_carousel/;
+            autoindex on;
+            autoindex_format json;
+            add_header Cache-Control "public, max-age=60";
+        }
+
+        location / {
+            proxy_pass http://control_plane;
+            proxy_http_version 1.1;
+            proxy_set_header Host control-plane;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_request_buffering on;
+        }
+    }
+}

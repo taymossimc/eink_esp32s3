@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Your profile — TMAds{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Account</p><h1>Your profile</h1><p>Keep your name current so teammates can identify you.</p></div></section>
+<section class="panel">
+  <form data-api="/api/v1/me" data-method="PATCH" data-json data-csrf="{{ csrf_token }}" data-redirect="/profile">
+    <label>Full name <input name="display_name" value="{{ user.display_name or '' }}" required minlength="1" maxlength="120" autocomplete="name"></label>
+    <label>Verified mobile number <input value="{{ user.phone_e164 }}" disabled></label>
+    <button>Save profile</button>
+  </form>
+</section>
+{% endblock %}

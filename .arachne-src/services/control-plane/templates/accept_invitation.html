@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Accept invitation — TMAds{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Organization invitation</p>
+    <h1>Join {{ invitation.organization_name if invitation else "TMAds" }}</h1>
+    {% if invitation %}
+    <p>This invitation is for {{ invitation.invitee_name or "you" }} as {{ invitation.role|replace("_"," ")|title }}.</p>
+    {% else %}
+    <p>This link does not match the signed-in phone number, or the invitation has expired.</p>
+    {% endif %}
+  </div>
+</section>
+{% if invitation %}
+<section class="panel">
+  <form data-invitation-accept data-csrf="{{ csrf_token }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button>Accept invitation</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Shelf activation — Digital Engine</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/zxing-browser.min.js?v=1" defer></script>
+  <script src="/static/shelf.js?v=8" defer></script>
+</head>
+<body class="shelf-install">
+  <main class="shelf-shell">
+    <header class="shelf-header">
+      <p class="eyebrow">Digital Engine</p>
+      <h1>Activate this shelf sign</h1>
+      <p class="fine">Scan the product barcode, then optionally capture the installed display for compliance.</p>
+    </header>
+
+    <section class="panel shelf-panel" data-shelf-root data-token="{{ token }}">
+      <div class="shelf-status" data-shelf-status>
+        <span class="status draft">Checking sign connectivity…</span>
+      </div>
+
+      <form class="shelf-form" data-shelf-form>
+        <label class="shelf-field">
+          <span>Product code (UPC)</span>
+          <input
+            data-shelf-upc
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="Scan or type UPC"
+            required
+          >
+        </label>
+
+        <div class="shelf-camera">
+          <video data-shelf-video playsinline muted></video>
+          <canvas data-shelf-canvas hidden></canvas>
+          <div class="shelf-camera-actions">
+            <button type="button" class="secondary" data-shelf-start-camera>Open camera to scan</button>
+            <button type="button" class="secondary" data-shelf-capture-barcode hidden>Capture barcode</button>
+          </div>
+        </div>
+
+        <label class="shelf-field">
+          <span>Scan barcode with camera (recommended on iPhone)</span>
+          <input data-shelf-barcode-photo type="file" accept="image/*" capture="environment">
+          <small>Take a close, sharp photo with the barcode filling most of the frame.</small>
+        </label>
+
+        <label class="shelf-field">
+          <span>Installation photo (optional)</span>
+          <input data-shelf-photo type="file" accept="image/*" capture="environment">
+          <small>Take a photo showing the sign installed on the shelf.</small>
+        </label>
+
+        <button type="submit" data-shelf-submit>Send campaign to sign</button>
+      </form>
+
+      <p class="shelf-result" data-shelf-result hidden role="status"></p>
+      <p class="shelf-error" data-shelf-error hidden role="alert"></p>
+    </section>
+  </main>
+</body>
+</html>

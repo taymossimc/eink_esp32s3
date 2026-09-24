@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Digital Engine{% endblock %}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/dashboard" aria-label="Digital Engine">
+      <span class="brand-mark" aria-hidden="true"><i></i></span>
+      <span class="brand-rule" aria-hidden="true"></span>
+      <span class="brand-name">DIGITAL<span>ENGINE</span><small>Advertising Platform</small></span>
+    </a>
+    {% if session %}
+    <nav>
+      <a href="/dashboard">Overview</a><a href="/organizations">Organizations</a>
+      <a href="/campaigns">Campaigns</a><a href="/funds">Funds</a>{% if is_supply_admin %}<a href="/supply">Fleet</a>{% endif %}<a href="/audit">Audit</a><a href="/profile">Profile</a>
+    </nav>
+    <button class="ghost" data-logout data-csrf="{{ csrf_token }}">Sign out</button>
+    {% endif %}
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

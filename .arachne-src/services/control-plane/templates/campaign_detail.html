@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} — TMAds{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/epaper-preview.css"><script src="/static/epaper-preview.js" defer></script>{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Campaign · {{ campaign.status }}</p><h1>{{ campaign.name }}</h1><p>{{ campaign.description }}</p></div><span class="status {{ campaign.status|lower }}">{{ campaign.status }}</span></section>
+<section class="panel"><div class="panel-head"><h2>Campaign media</h2><span>Click a thumbnail to preview the sign</span></div>
+  <div class="media-grid">{% for item in media %}<article>{% if item.kind == "image" and item.processing_status == "READY" %}<button type="button" class="media-thumb" data-epaper-preview data-src="/api/v1/media/{{ item.id }}/content" data-name="{{ item.source_filename }}" aria-label="Preview {{ item.source_filename }}"><img src="/api/v1/media/{{ item.id }}/content" alt="{{ item.source_filename }}"></button>{% else %}<div class="media-icon">{{ "▶" if item.kind=="video" else "▧" }}</div>{% endif %}<strong>{{ item.source_filename }}</strong><small>{{ item.kind|title }}{% if item.width and item.height %} · {{ item.width }}×{{ item.height }}{% endif %} · {{ item.bytes }} bytes</small><span class="status {{ 'active' if item.processing_status=='READY' else 'draft' }}">{{ item.processing_status }}</span>{% if item.error %}<small class="error">{{ item.error }}</small>{% endif %}</article>{% else %}<div class="empty">Upload an image of any size, or a video up to 30 seconds.</div>{% endfor %}</div>
+  <dialog class="epaper-modal" data-epaper-modal aria-labelledby="epaper-preview-title">
+    <div class="epaper-modal-bar"><h2 id="epaper-preview-title" data-epaper-title>Sign preview</h2><form method="dialog"><button class="ghost" type="submit">Close</button></form></div>
+    <div class="epaper-layout">
+      <div class="epaper-stage"><canvas data-epaper-canvas width="600" height="800"></canvas><p class="epaper-status" data-epaper-status>Preparing the panel preview…</p></div>
+      <aside class="epaper-callout">
+        <p class="eyebrow">E-paper panel</p>
+        <p>This preview is the creative the way the sign will show it: fitted to <strong>1200×1600</strong> and reduced to the six colors the display can make.</p>
+        <ul class="epaper-swatches">
+          <li><i style="background:#000"></i>Black</li>
+          <li><i style="background:#fff"></i>White</li>
+          <li><i style="background:#ff0"></i>Yellow</li>
+          <li><i style="background:#f00"></i>Red</li>
+          <li><i style="background:#00f"></i>Blue</li>
+          <li><i style="background:#0f0"></i>Green</li>
+        </ul>
+        <p>The e-paper panel cannot show photographs in full color. Every pixel is snapped to the nearest of these six, so fine detail and in-between colors disappear on the glass.</p>
+      </aside>
+    </div>
+  </dialog>
+  <form data-api="/api/v1/campaigns/{{ campaign.id }}/media" data-method="POST" data-upload data-csrf="{{ csrf_token }}" data-redirect="/campaigns/{{ campaign.id }}">
+    <label>Upload creative <input name="file" type="file" accept="image/*,video/mp4,video/quicktime,video/webm" required></label><button>Upload and validate</button>
+  </form>
+</section>
+<section class="panel">
+  <div class="panel-head"><h2>Product codes (UPC/SKU)</h2><span>Shelf activation routing</span></div>
+  <p class="fine">Map barcodes to this campaign. Store clerks scan these codes during NFC shelf activation. Device group: <code>{{ shelf_device_group }}</code></p>
+  <div class="device-table-wrap">
+    <table class="device-table">
+      <thead><tr><th>UPC</th><th>Label</th><th></th></tr></thead>
+      <tbody>
+        {% for item in product_upcs %}
+        <tr>
+          <td><code>{{ item.upc }}</code></td>
+          <td>{{ item.label or "—" }}</td>
+          <td>
+            <form data-api="/api/v1/campaigns/{{ campaign.id }}/product-upcs/{{ item.upc }}" data-method="DELETE" data-json data-csrf="{{ csrf_token }}" data-redirect="/campaigns/{{ campaign.id }}">
+              <button class="danger" type="submit">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="empty">No product codes mapped yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form data-api="/api/v1/campaigns/{{ campaign.id }}/product-upcs" data-method="POST" data-json data-csrf="{{ csrf_token }}" data-redirect="/campaigns/{{ campaign.id }}">
+    <div class="field-pair">
+      <label>UPC / SKU <input name="upc" required inputmode="numeric" placeholder="012345678905"></label>
+      <label>Label <input name="label" maxlength="120" placeholder="12oz soda"></label>
+    </div>
+    <button class="secondary" type="submit">Add product code</button>
+  </form>
+  {% set ready = media|selectattr("processing_status","equalto","READY")|list %}
+  {% if ready and product_upcs %}
+  <form class="mt-4" data-api="/api/v1/campaigns/{{ campaign.id }}/shelf-bids" data-method="POST" data-json data-csrf="{{ csrf_token }}" data-result-redirect="/bids/{id}">
+    <button>Create shelf bid (device-group targeting)</button>
+  </form>
+  {% endif %}
+</section>
+<section class="split">
+  <article class="panel"><div class="panel-head"><h2>Bids</h2></div>{% for bid in bids %}<a class="row-link" href="/bids/{{ bid.id }}"><div><strong>Bid revision {{ bid.current_revision }}</strong><small>{{ bid.updated_at }}</small></div><span class="status {{ bid.status|lower }}">{{ bid.status }}</span></a>{% else %}<div class="empty">No bids yet.</div>{% endfor %}</article>
+  <article class="panel"><h2>Toronto two-hour bid</h2>
+  {% set ready = media|selectattr("processing_status","equalto","READY")|list %}
+  {% if ready %}
+  <form data-api="/api/v1/campaigns/{{ campaign.id }}/bids" data-method="POST" data-json data-kind="bid" data-csrf="{{ csrf_token }}" data-result-redirect="/bids/{id}">
+    <div class="field-pair"><label>Valid from <input name="valid_from" type="datetime-local" required></label><label>Valid to <input name="valid_to" type="datetime-local" required></label></div>
+    <input type="hidden" name="total_cap_minor" value="{{ campaign.budget_cap_minor }}"><input type="hidden" name="geography" value="geo:toronto-v1">
+    <div class="field-pair"><label>Min QFV cents <input name="qfv_price_min_minor" type="number" value="5"></label><label>Max QFV cents <input name="qfv_price_max_minor" type="number" value="25"></label></div>
+    <div class="criteria"><span><b>Required</b> ≥ 1 screen-facing face</span><span>Weather <b>25</b></span><span>Selected team proximity <b>80</b></span><span>Selected market instrument <b>50</b></span></div>
+    <div class="field-pair">
+      <label>Stock, index, or ETF symbol <input name="market_symbol" value="DIA" maxlength="32" pattern="\^?[A-Za-z0-9]+([.-][A-Za-z0-9]+)*" autocomplete="off" required></label>
+      <label>Sports league <select name="sports_league" data-sports-league required>{% for league in sports_teams %}<option value="{{ league }}"{{ " selected" if league == "NHL" else "" }}>{{ league }}</option>{% endfor %}</select></label>
+    </div>
+    <label>Sports team <select name="sports_team" data-sports-team required>{% for league, teams in sports_teams.items() %}{% for code, name in teams %}<option value="{{ code }}" data-league="{{ league }}"{{ " selected" if league == "NHL" and code == "TOR" else "" }}>{{ name }} ({{ code }})</option>{% endfor %}{% endfor %}</select></label>
+    <label>Normalized criteria JSON <textarea name="criteria" data-json-field placeholder='[{"criterion_id":"screen-facing-face","kind":"attention.face_count","required":true,"weight":0,"operator":"gte","target":1,"freshness_seconds":5,"unknown":"ineligible"}]'></textarea><small>Optional. Leave empty to use the acceptance preset; otherwise define any catalog kind, freshness/unknown policy, and score curve.</small></label>
+    <input type="hidden" name="max_qfvs_per_play" value="8"><input type="hidden" name="require_face_count" value="1"><input type="hidden" name="weather_weight" value="25"><input type="hidden" name="sports_weight" value="80"><input type="hidden" name="market_weight" value="50"><input type="hidden" name="market_score_curve" data-json-field value='{"type":"linear","min":-2,"max":2}'>
+    {% for item in ready %}<label class="check"><input name="media_ids" type="checkbox" value="{{ item.id }}" checked> {{ item.source_filename }}</label>{% endfor %}
+    <button>Create draft bid</button>
+  </form>{% else %}<div class="notice">At least one validated media asset is required.</div>{% endif %}
+  </article>
+</section>
+{% endblock %}

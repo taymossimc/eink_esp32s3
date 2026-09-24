@@ -19,6 +19,7 @@ struct ModemDiagnostics {
     char imsi[32] = {};
     char operatorName[48] = {};
     char cellularIp[48] = {};
+    char gnssUtc[32] = {};
 };
 
 ModemDiagnostics modemGetDiagnostics();
@@ -62,5 +63,11 @@ void modemReleaseData();
 bool modemHttpsGet(const char *host, const char *path,
                    uint8_t **bodyOut, size_t *lenOut,
                    size_t maxBytes = 3UL * 1024UL * 1024UL);
+
+bool modemHttpsRequest(
+    const char *host, const char *requestPath, const char *method,
+    const uint8_t *body, size_t bodyLen, const char *timestamp,
+    const char *nonce, const char *signature, uint8_t **bodyOut,
+    size_t *lenOut, size_t maxBytes, int *statusOut = nullptr);
 
 bool modemBandwidthTest(size_t bytes, float *mbps, uint32_t *durationMs);

@@ -1,0 +1,28 @@
+{
+  "name": "libwebp-decoder",
+  "version": "1.6.0",
+  "build": {
+    "srcDir": ".",
+    "includeDir": ".",
+    "srcFilter": [
+      "+<src/dec/*.c>",
+      "+<src/dsp/*.c>",
+      "+<src/utils/*.c>",
+      "-<src/dsp/*_mips*.c>",
+      "-<src/dsp/*_msa.c>",
+      "-<src/dsp/*_neon.c>",
+      "-<src/dsp/*_sse2.c>",
+      "-<src/dsp/*_sse41.c>",
+      "-<src/dsp/*_avx2.c>",
+      "-<src/dsp/enc*.c>",
+      "-<src/dsp/cost*.c>",
+      "-<src/dsp/lossless_enc*.c>",
+      "-<src/utils/*encode*.c>",
+      "-<src/utils/bit_writer_utils.c>",
+      "-<src/utils/palette.c>"
+    ],
+    "unflags": [
+      "-DHAVE_CONFIG_H"
+    ]
+  }
+}

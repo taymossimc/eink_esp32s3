@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Funds — TMAds{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Advertiser funds</p><h1>Funds</h1><p>Prepaid advertising balances and commitments. These balances are not regulated escrow.</p></div></section>
+<section class="panel">
+  <div class="panel-head"><h2>Organization wallets</h2></div>
+  {% for item in wallets %}
+  <a class="row-link" href="/organizations/{{ item.organization.id }}/wallet">
+    <div><strong>{{ item.organization.name }}</strong><small>${{ "%.2f"|format(item.wallet.reserved_minor / 100) }} reserved · ${{ "%.2f"|format(item.wallet.spent_minor / 100) }} spent</small></div>
+    <b>${{ "%.2f"|format(item.wallet.available_minor / 100) }} available</b>
+  </a>
+  {% else %}<div class="empty">Create an organization to start funding campaigns.</div>{% endfor %}
+</section>
+{% endblock %}

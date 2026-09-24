@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Performance — {{ organization.name }}{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Advertiser reporting</p><h1>{{ organization.name }}</h1><p>Campaign delivery, deterministic settlement, and Besu finality.</p></div></section>
+<section class="panel"><h2>Campaign performance</h2>
+{% for row in performance %}<div class="journal"><div><strong>{{ row.name }}</strong><small>{{ row.plays }} plays · {{ row.qfv }} QFV · {{ row.accepted_count }} accepted · {{ row.rejected_count }} rejected</small></div><strong>{{ "%.2f"|format(row.spend_minor / 100) }} {{ row.currency }}</strong></div>{% else %}<p class="fine">No settled executions yet.</p>{% endfor %}
+</section>
+<section class="panel"><h2>Settlement history</h2>
+{% for row in settlements %}<details class="journal"><summary><strong>{{ row.receipt_id }}</strong> · {{ row.status }} · {{ row.amount_minor }} {{ row.currency }} minor</summary><p class="fine">Campaign {{ row.campaign_id }} · contract revision {{ row.contract_revision }} · grant {{ row.grant_id }} · QFV {{ row.qfv_count }} · score {{ row.soft_score }} · reason {{ row.reason_code }}</p><p class="fine">Device {{ row.device_pseudonym }} · media {{ row.media_hash }} · execution {{ row.execution_at }}</p>{% if row.transaction_hash %}<p class="fine">Besu tx {{ row.transaction_hash }} · block {{ row.block_number }} · {{ row.finality }} · batch {{ row.batch_id }}</p><p class="fine">Merkle root {{ row.merkle_root }} · proof {{ row.merkle_proof }}</p>{% else %}<p class="fine">Awaiting batch anchor.</p>{% endif %}</details>{% else %}<p class="fine">No settlement receipts yet.</p>{% endfor %}
+</section>
+{% endblock %}
