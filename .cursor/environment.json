@@ -1,0 +1,15 @@
+{
+  "name": "eink_esp32s3 monorepo",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "control-plane",
+      "description": "Arachne control-plane FastAPI web app (SQLite-backed) on http://localhost:8080. Providers are disabled and demo OTP is enabled for local development.",
+      "command": "source .venv/bin/activate && export TMADS_ENVIRONMENT=development TMADS_DATA_DIR=.tmads-data TMADS_MEDIA_DIR=.tmads-data/media TMADS_COOKIE_SECURE=false TMADS_DEMO_OTP_ENABLED=true TMADS_ALLOWED_HOSTS=localhost,127.0.0.1,testserver,0.0.0.0 && exec uvicorn tmads_control_plane.main:create_app --factory --host 0.0.0.0 --port 8080"
+    }
+  ],
+  "ports": [
+    { "name": "control-plane", "port": 8080 }
+  ]
+}
