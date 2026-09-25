@@ -2,3 +2,10 @@
 .venv
 .pio/
 Drivers
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Local runtime data for the Arachne control-plane dev server
+.tmads-data/
