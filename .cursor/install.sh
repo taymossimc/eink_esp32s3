@@ -30,13 +30,21 @@ python -m pip install --upgrade pip wheel
 pip install "platformio>=6,<7" "Pillow>=10"
 
 # --- Arachne backend services (editable installs) ---
-pip install -e ".arachne-src/services/control-plane[dev]"
-# edge-distributor imports an out-of-repo `tmads_shared` package that is not
-# vendored here, so it cannot be started from this checkout. Install it anyway
-# so its dependencies are present; ignore failure to keep setup resilient.
-pip install -e ".arachne-src/services/edge-distributor[dev]" || true
+# These live under .arachne-src, which is only present on branches that include
+# the backend. Guard the install so setup still succeeds on branches without it.
+if [ -f ".arachne-src/services/control-plane/pyproject.toml" ]; then
+  pip install -e ".arachne-src/services/control-plane[dev]"
+  # edge-distributor imports an out-of-repo `tmads_shared` package that is not
+  # vendored here, so it cannot be started from this checkout. Install it anyway
+  # so its dependencies are present; ignore failure to keep setup resilient.
+  pip install -e ".arachne-src/services/edge-distributor[dev]" || true
+else
+  echo "Arachne backend (.arachne-src) not present in this checkout; skipping."
+fi
 
 # --- Prime PlatformIO platform + toolchains + libraries (cached into image) ---
-pio pkg install -e esp32-s3-first-light
+if [ -f platformio.ini ]; then
+  pio pkg install -e esp32-s3-first-light
+fi
 
 echo "Cloud Agent environment ready."
